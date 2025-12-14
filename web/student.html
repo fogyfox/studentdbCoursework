@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Студент</title>
+</head>
+<body>
+
+<h2>Мои оценки</h2>
+<ul id="grades"></ul>
+
+<button onclick="logout()">Выйти</button>
+
+<script src="main.js"></script>
+<script>
+checkRole("STUDENT");
+
+async function loadGrades() {
+    const data = await apiFetch("/grades?role=STUDENT");
+    const list = document.getElementById("grades");
+
+    if (!data.grades) {
+        list.innerHTML = "<li>Нет данных</li>";
+        return;
+    }
+
+    data.grades.forEach(g => {
+        const li = document.createElement("li");
+        li.textContent =
+            `Курс ID: ${g.course_id}, Оценка: ${g.grade}, Присутствие: ${g.present ? "Да" : "Нет"}`;
+        list.appendChild(li);
+    });
+}
+
+loadGrades();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Преподаватель</title>
+</head>
+<body>
+
+<h2>Добавить оценку</h2>
+
+<form id="gradeForm">
+    <input type="number" id="student_id" placeholder="ID студента" required><br><br>
+    <input type="number" id="course_id" placeholder="ID курса" required><br><br>
+    <input type="number" id="grade" placeholder="Оценка" required><br><br>
+
+    <label>
+        <input type="checkbox" id="present"> Присутствовал
+    </label><br><br>
+
+    <input type="date" id="date_assigned" required><br><br>
+
+    <button type="submit">Добавить</button>
+</form>
+
+<p id="msg"></p>
+
+<button onclick="logout()">Выйти</button>
+
+<script src="main.js"></script>
+<script>
+checkRole("TEACHER");
+
+document.getElementById("gradeForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const body = {
+        role: "TEACHER",
+        student_id: Number(student_id.value),
+        course_id: Number(course_id.value),
+        grade: Number(grade.value),
+        present: present.checked,
+        date_assigned: date_assigned.value
+    };
+
+    const res = await apiFetch("/grades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+    });
+
+    document.getElementById("msg").textContent = res.status || res.error;
+});
+</script>
+
+</body>
+</html>

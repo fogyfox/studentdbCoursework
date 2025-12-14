@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Администратор</title>
+</head>
+<body>
+
+<h2>Пользователи</h2>
+<ul id="users"></ul>
+
+<button onclick="logout()">Выйти</button>
+
+<script src="main.js"></script>
+<script>
+checkRole("ADMIN");
+
+async function loadUsers() {
+    const data = await apiFetch("/users?role=ADMIN");
+    const list = document.getElementById("users");
+
+    if (!data.users) {
+        list.innerHTML = "<li>Нет данных</li>";
+        return;
+    }
+
+    data.users.forEach(u => {
+        const li = document.createElement("li");
+        li.textContent = `ID: ${u.id}, Логин: ${u.login}, Роль: ${u.role}`;
+        list.appendChild(li);
+    });
+}
+
+loadUsers();
+</script>
+
+</body>
+</html>

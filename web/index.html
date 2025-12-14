@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Вход в систему</title>
+</head>
+<body>
+
+<h2>Вход</h2>
+
+<form id="loginForm">
+    <input type="text" id="login" placeholder="Логин" required><br><br>
+    <input type="password" id="password" placeholder="Пароль" required><br><br>
+    <button type="submit">Войти</button>
+</form>
+
+<p id="error" style="color:red;"></p>
+
+<script src="main.js"></script>
+<script>
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const login = document.getElementById("login").value;
+    const password = document.getElementById("password").value;
+
+    const res = await apiFetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login, password })
+    });
+
+    if (res.status === "success") {
+        sessionStorage.setItem("role", res.role);
+
+        if (res.role === "STUDENT") location.href = "student.html";
+        else if (res.role === "TEACHER") location.href = "teacher.html";
+        else if (res.role === "ADMIN") location.href = "admin.html";
+    } else {
+        document.getElementById("error").textContent = res.error;
+    }
+});
+</script>
+
+</body>
+</html>
