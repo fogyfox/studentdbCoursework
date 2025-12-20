@@ -2,36 +2,190 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Администратор</title>
+    <title>Админ панель</title>
+    <style>
+        .tab { display: none; }
+        .tab.active { display: block; }
+        button.tab-button { margin-right: 5px; }
+    </style>
 </head>
 <body>
 
-<h2>Пользователи</h2>
-<ul id="users"></ul>
+<h2>Админ панель</h2>
 
-<button onclick="logout()">Выйти</button>
+<!-- Кнопки вкладок -->
+<div>
+    <button class="tab-button" data-tab="users">Пользователи</button>
+    <button class="tab-button" data-tab="subjects">Предметы</button>
+</div>
+
+<!-- Вкладка: Пользователи -->
+<div id="users" class="tab active">
+    <h3>Список пользователей</h3>
+    <table border="1" id="usersTable">
+        <thead><tr><th>ID</th><th>Логин</th><th>Роль</th><th>Действия</th></tr></thead>
+        <tbody></tbody>
+    </table>
+
+    <h3>Добавить пользователя</h3>
+    <form id="createUserForm">
+        <input type="text" id="login" placeholder="Логин" required>
+        <input type="password" id="password" placeholder="Пароль" required>
+        <select id="role">
+            <option value="STUDENT">STUDENT</option>
+            <option value="TEACHER">TEACHER</option>
+            <option value="ADMIN">ADMIN</option>
+        </select>
+        <button type="submit">Создать</button>
+    </form>
+    <p id="userError" style="color:red"></p>
+</div>
+
+<!-- Вкладка: Предметы -->
+<div id="subjects" class="tab">
+    <h3>Список предметов</h3>
+    <table border="1" id="subjectsTable">
+        <thead><tr><th>ID</th><th>Название</th><th>Действия</th></tr></thead>
+        <tbody></tbody>
+    </table>
+
+    <h3>Добавить предмет</h3>
+    <form id="createSubjectForm">
+        <input type="text" id="subjectName" placeholder="Название предмета" required>
+        <button type="submit">Создать</button>
+    </form>
+    <p id="subjectError" style="color:red"></p>
+</div>
 
 <script src="main.js"></script>
 <script>
-checkRole("ADMIN");
+const roleHeader = sessionStorage.getItem("role") || "ADMIN";
 
+// Переключение вкладок
+document.querySelectorAll(".tab-button").forEach(btn => {
+    btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach(tab => tab.classList.remove("active"));
+        document.getElementById(btn.dataset.tab).classList.add("active");
+    });
+});
+
+// =====================
+// Пользователи
+// =====================
 async function loadUsers() {
-    const data = await apiFetch("/users?role=ADMIN");
-    const list = document.getElementById("users");
+    const usersObj = await apiFetch("/admin/users", { method: "GET", headers: { role: roleHeader } });
+    const users = Object.values(usersObj);
+    const tbody = document.querySelector("#usersTable tbody");
+    tbody.innerHTML = "";
 
-    if (!data.users) {
-        list.innerHTML = "<li>Нет данных</li>";
-        return;
-    }
-
-    data.users.forEach(u => {
-        const li = document.createElement("li");
-        li.textContent = `ID: ${u.id}, Логин: ${u.login}, Роль: ${u.role}`;
-        list.appendChild(li);
+    users.forEach(user => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${user.id}</td>
+            <td>${user.login}</td>
+            <td>${user.role}</td>
+            <td>
+                <button onclick="deleteUser(${user.id})">Удалить</button>
+                <button onclick="editUser(${user.id}, '${user.login}', '${user.role}')">Изменить</button>
+            </td>`;
+        tbody.appendChild(tr);
     });
 }
 
+document.getElementById("createUserForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const login = document.getElementById("login").value;
+    const password = document.getElementById("password").value;
+    const role = document.getElementById("role").value;
+
+    const res = await apiFetch("/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", role: roleHeader },
+        body: JSON.stringify({ login, password, role })
+    });
+
+    if (res.status === "success") {
+        document.getElementById("userError").textContent = "";
+        loadUsers();
+    } else {
+        document.getElementById("userError").textContent = res.error || "Ошибка";
+    }
+});
+
+// Функции для удаления и изменения пользователей
+async function deleteUser(id) {
+    const res = await apiFetch(`/admin/users/${id}`, {
+        method: "DELETE",
+        headers: { role: roleHeader }
+    });
+    if (res.status === "success") loadUsers();
+    else alert(res.error || "Ошибка при удалении");
+}
+
+
+function editUser(id, login, role) {
+    const newLogin = prompt("Новый логин:", login);
+    const newRole = prompt("Новая роль:", role);
+    if (newLogin && newRole) {
+        apiFetch(`/admin/users/${id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", role: roleHeader },
+            body: JSON.stringify({ login: newLogin, role: newRole })
+        }).then(res => {
+            if (res.status === "success") loadUsers();
+            else alert(res.error || "Ошибка при изменении");
+        });
+    }
+}
+
+// =====================
+// Предметы
+// =====================
+async function loadSubjects() {
+    const subjectsObj = await apiFetch("/admin/subjects", { method: "GET", headers: { role: roleHeader } });
+    const subjects = Object.values(subjectsObj);
+    const tbody = document.querySelector("#subjectsTable tbody");
+    tbody.innerHTML = "";
+
+    subjects.forEach(subj => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${subj.id}</td>
+            <td>${subj.name}</td>
+            <td>
+                <button onclick="deleteSubject(${subj.id})">Удалить</button>
+            </td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+document.getElementById("createSubjectForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const name = document.getElementById("subjectName").value;
+
+    const res = await apiFetch("/admin/subjects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", role: roleHeader },
+        body: JSON.stringify({ name })
+    });
+
+    if (res.status === "success") {
+        document.getElementById("subjectError").textContent = "";
+        loadSubjects();
+    } else {
+        document.getElementById("subjectError").textContent = res.error || "Ошибка";
+    }
+});
+
+async function deleteSubject(id) {
+    const res = await apiFetch(`/admin/subjects/${id}`, { method: "DELETE", headers: { role: roleHeader } });
+    if (res.status === "success") loadSubjects();
+    else alert(res.error || "Ошибка при удалении");
+}
+
+// Загрузка данных при старте
 loadUsers();
+loadSubjects();
 </script>
 
 </body>

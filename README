@@ -1,0 +1,4 @@
+Пока что тут просто полезные команды...
+
+Заход в субд в контейнере:
+docker exec -ti students_db psql -U admin -d students_db

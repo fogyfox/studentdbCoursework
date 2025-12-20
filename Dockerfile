@@ -16,7 +16,9 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # 4. Копируем проект
-COPY . /app
+COPY src ./src
+COPY web ./web
+COPY external ./external
 
 # 5. Сборка проекта через Makefile
 WORKDIR /app/src
