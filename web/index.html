@@ -30,14 +30,25 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
         body: JSON.stringify({ login, password })
     });
 
+    console.log("LOGIN RESPONSE:", res);
+
     if (res.status === "success") {
         sessionStorage.setItem("role", res.role);
 
-        if (res.role === "STUDENT") location.href = "student.html";
-        else if (res.role === "TEACHER") location.href = "teacher.html";
-        else if (res.role === "ADMIN") location.href = "admin.html";
+        if (res.role === "STUDENT") {
+            location.href = "student.html";
+        } else if (res.role === "TEACHER") {
+            location.href = "teacher.html";
+        } else if (res.role === "ADMIN") {
+            location.href = "admin.html";
+        } else {
+            document.getElementById("error").textContent =
+                "Unknown role: " + res.role;
+        }
+
     } else {
-        document.getElementById("error").textContent = res.error;
+        document.getElementById("error").textContent =
+            res.error || "Ошибка входа";
     }
 });
 </script>

@@ -1,217 +1,434 @@
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <pqxx/pqxx>
-#include "crow.h"
-#include "crypto.h"
-#include "auth.h"
+#include <crow.h>
 #include "db.h"
+#include "crypto.h"
 
-// =====================
-// Конфигурация БД
-// =====================
-const std::string DB_CONN = "dbname=students_db user=admin password=admin host=db";
-
-// =====================
-// Основное приложение
-// =====================
 int main() {
     crow::SimpleApp app;
+    Database db("dbname=students_db user=admin password=admin host=db");
 
-    // =====================
-    // Подключение к БД и подготовка prepared statements
-    // =====================
-    pqxx::connection conn(DB_CONN);
-
-    conn.prepare("get_user_by_login", "SELECT id, password_hash, role FROM users WHERE login = $1");
-    conn.prepare("insert_user", "INSERT INTO users (login, password_hash, role) VALUES ($1, $2, $3)");
-    conn.prepare("get_all_users", "SELECT id, login, role FROM users ORDER BY id");
-
-    conn.prepare("insert_student", "INSERT INTO students (first_name, last_name, dob) VALUES ($1, $2, $3)");
-    conn.prepare("get_all_students", "SELECT id, first_name, last_name, dob FROM students");
-
-    conn.prepare("insert_course", "INSERT INTO courses (name) VALUES ($1)");
-    conn.prepare("get_all_courses", "SELECT id, name FROM courses");
-
-    conn.prepare("insert_grade", "INSERT INTO grades (student_id, course_id, grade, present, date_assigned) VALUES ($1, $2, $3, $4, $5)");
-    conn.prepare("get_grades_by_student", "SELECT course_id, grade, present, date_assigned FROM grades WHERE student_id = $1");
-
-    // =====================
-    // Функция для отдачи статических файлов
-    // =====================
-    auto serveFile = [](const std::string& filename) {
-        std::ifstream ifs("../web/" + filename); // путь к папке web относительно src
+    // ----------------- Статика -----------------
+    auto serveFile = [](const std::string &filename) {
+        std::ifstream ifs("../web/" + filename);
         if (!ifs) return crow::response(404);
-        std::stringstream buffer;
-        buffer << ifs.rdbuf();
-        return crow::response(buffer.str());
+        std::stringstream ss;
+        ss << ifs.rdbuf();
+        return crow::response(ss.str());
     };
 
-    // =====================
-    // Маршруты фронтенда (GET)
-    // =====================
     CROW_ROUTE(app, "/login").methods("GET"_method)([&](){ return serveFile("index.html"); });
-    CROW_ROUTE(app, "/student.html")([&](){ return serveFile("student.html"); });
-    CROW_ROUTE(app, "/teacher.html")([&](){ return serveFile("teacher.html"); });
-    CROW_ROUTE(app, "/admin.html")([&](){ return serveFile("admin.html"); });
     CROW_ROUTE(app, "/main.js")([&](){ return serveFile("main.js"); });
+    CROW_ROUTE(app, "/admin.html")([&](){ return serveFile("admin.html"); });
+    CROW_ROUTE(app, "/student.html")([&](){ return serveFile("student.html"); });
 
-    // =====================
-    // Эндпоинт POST для логина
-    // =====================
-    CROW_ROUTE(app, "/login").methods("POST"_method)([&conn](const crow::request &req){
+    // ----------------- POST /login -----------------
+    CROW_ROUTE(app, "/login").methods("POST"_method)([&db](const crow::request &req){
         auto body = crow::json::load(req.body);
-        crow::json::wvalue res;
-
-        if (!body || !body.has("login") || !body.has("password")) {
-            res["error"] = "Invalid JSON";
-            return crow::response(400, res);
-        }
+        if (!body || !body.has("login") || !body.has("password"))
+            return crow::response(400, "Invalid JSON");
 
         std::string login = body["login"].s();
         std::string password = body["password"].s();
 
         try {
-            pqxx::work txn(conn);
-            auto r = txn.exec_prepared("get_user_by_login", login);
+            User u = db.getUserByLogin(login);
+            if (!checkPassword(password, u.password_hash))
+                return crow::response(401, "Invalid password");
 
-            if (r.empty()) return crow::response(401, "User not found");
-
-            std::string hash = r[0]["password_hash"].as<std::string>();
-            std::string role = r[0]["role"].as<std::string>();
-
-            if (!checkPassword(password, hash)) return crow::response(401, "Invalid password");
-
-            txn.commit();
-
+            crow::json::wvalue res;
             res["status"] = "success";
-            res["role"] = role;
+            res["role"] = u.role;
             return crow::response(200, res);
-        } catch (const std::exception &e) {
-            res["error"] = e.what();
-            return crow::response(500, res);
+        } catch (...) {
+            return crow::response(401, "User not found");
         }
     });
 
-    // =====================
-    // CRUD для пользователей (ADMIN)
-    // =====================
-    CROW_ROUTE(app, "/admin/users").methods("GET"_method)([&conn](const crow::request &req){
-        crow::json::wvalue res;
+    //сброс пароля
+    CROW_ROUTE(app, "/users/<int>/reset_password").methods("POST"_method)([&db](const crow::request &req, int id){
+        auto body = crow::json::load(req.body);
+        if (!body || !body.has("new_password")) return crow::response(400, "Invalid JSON");
 
+        std::string new_hash = hashPassword(body["new_password"].s());
+        try {
+            db.updateUserPassword(id, new_hash);
+            return crow::response(200, "Password updated");
+        } catch (...) {
+            return crow::response(500, "Error updating password");
+        }
+    });  
+
+    // ----------------- GET /admin/users -----------------
+    CROW_ROUTE(app, "/admin/users").methods("GET"_method)([&db](const crow::request &req){
         auto roleHeader = req.get_header_value("role");
         if (roleHeader != "ADMIN") return crow::response(403, "Access denied");
 
-
-        try {
-            pqxx::work txn(conn);
-            auto r = txn.exec_prepared("get_all_users");
-
-            for (size_t i = 0; i < r.size(); ++i) {
-                res[i]["id"] = r[i]["id"].as<int>();
-                res[i]["login"] = r[i]["login"].as<std::string>();
-                res[i]["role"] = r[i]["role"].as<std::string>();
-            }
-
-            txn.commit();
-            return crow::response(200, res);
-        } catch (const std::exception &e) {
-            res["error"] = e.what();
-            return crow::response(500, res);
+        auto users = db.getAllUsers();
+        crow::json::wvalue res;
+        for (size_t i = 0; i < users.size(); ++i) {
+            res[i]["id"] = users[i].id;
+            res[i]["login"] = users[i].login;
+            res[i]["role"] = users[i].role;
         }
+        return crow::response(200, res);
     });
 
-    CROW_ROUTE(app, "/admin/users").methods("POST"_method)([&conn](const crow::request &req){
-        crow::json::wvalue res;
-
+    // ----------------- POST /admin/users -----------------
+    CROW_ROUTE(app, "/admin/users").methods("POST"_method)([&db](const crow::request &req){
         auto body = crow::json::load(req.body);
         if (!body || !body.has("login") || !body.has("password") || !body.has("role"))
             return crow::response(400, "Invalid JSON");
 
+        User u;
+        u.login = body["login"].s();
+        u.password_hash = hashPassword(body["password"].s());
+        u.role = body["role"].s();
+
+        db.addUser(u);
+
+        crow::json::wvalue res;
+        res["status"] = "success";
+        return crow::response(200, res);
+    });
+    // ----------------- DELETE /admin/users/<id> -----------------
+    CROW_ROUTE(app, "/admin/users/<int>").methods("DELETE"_method)([&db](const crow::request &req, int id){
+        auto roleHeader = req.get_header_value("role");
+        if (roleHeader != "ADMIN") return crow::response(403, "Access denied");
+    
+        try {
+            db.deleteUser(id);
+            return crow::response(200, "User deleted");
+        } catch (...) {
+            return crow::response(500, "Error deleting user");
+        }
+    });
+
+    // ----------------- PUT /admin/users/<id> -----------------
+    CROW_ROUTE(app, "/admin/users/<int>").methods("PUT"_method)([&db](const crow::request &req, int id){
         auto roleHeader = req.get_header_value("role");
         if (roleHeader != "ADMIN") return crow::response(403, "Access denied");
 
-        std::string login = body["login"].s();
-        std::string password = body["password"].s();
-        std::string role = body["role"].s();
-        std::string hash = hashPassword(password);
+        auto body = crow::json::load(req.body);
+        if (!body) return crow::response(400, "Invalid JSON");
+
+        User u;
+        if (body.has("login")) u.login = body["login"].s();
+        if (body.has("password")) u.password_hash = hashPassword(body["password"].s());
+        if (body.has("role")) u.role = body["role"].s();
 
         try {
-            pqxx::work txn(conn);
-            txn.exec_prepared("insert_user", login, hash, role);
-            txn.commit();
-
-            res["status"] = "success";
-            return crow::response(200, res);
-        } catch (const std::exception &e) {
-            res["error"] = e.what();
-            return crow::response(500, res);
+            db.updateUser(id, u);
+            return crow::response(200, "User updated");
+        } catch (...) {
+            return crow::response(500, "Error updating user");
         }
     });
 
-    // =====================
-    // CRUD студенты (ADMIN)
-    // =====================
-    CROW_ROUTE(app, "/students").methods("GET"_method)([&conn](const crow::request &req){
-        crow::json::wvalue res;
+    // ----------------- POST /admin/courses -----------------
+    CROW_ROUTE(app, "/admin/courses").methods("POST"_method)([&db](const crow::request &req){
+        auto roleHeader = req.get_header_value("role");
+        if (roleHeader != "ADMIN") return crow::response(403, "Access denied");
 
         auto body = crow::json::load(req.body);
-        std::string role = "";
-        if (body && body.has("role")) {
-            auto& roleField = body["role"];
-            if (roleField.t() != crow::json::type::Null) {
-                role = std::string(roleField.s());
-            }
-        }
+        if (!body || !body.has("name")) return crow::response(400, "Invalid JSON");
 
-        if (!checkRole(role, "ADMIN")) return crow::response(403, "Access denied");
+        Course c;
+        c.name = body["name"].s();
 
         try {
-            pqxx::work txn(conn);
-            auto r = txn.exec_prepared("get_all_students");
-
-            for (size_t i = 0; i < r.size(); ++i) {
-                res[i]["id"] = r[i]["id"].as<int>();
-                res[i]["first_name"] = r[i]["first_name"].as<std::string>();
-                res[i]["last_name"] = r[i]["last_name"].as<std::string>();
-                res[i]["dob"] = r[i]["dob"].as<std::string>();
-            }
-
-            txn.commit();
-            return crow::response(200, res);
-        } catch (const std::exception &e) {
-            res["error"] = e.what();
-            return crow::response(500, res);
+            db.addCourse(c);
+            return crow::response(200, "Course added");
+        } catch (...) {
+            return crow::response(500, "Error adding course");
         }
     });
 
-    CROW_ROUTE(app, "/students").methods("POST"_method)([&conn](const crow::request &req){
+    // ----------------- DELETE /admin/courses/<id> -----------------
+    CROW_ROUTE(app, "/admin/courses/<int>").methods("DELETE"_method)([&db](const crow::request &req, int id){
+        auto roleHeader = req.get_header_value("role");
+        if (roleHeader != "ADMIN") return crow::response(403, "Access denied");
+
+        try {
+            db.deleteCourse(id);
+            return crow::response(200, "Course deleted");
+        } catch (...) {
+            return crow::response(500, "Error deleting course");
+        }
+    });
+
+    // ----------------- PUT /admin/courses/<id> -----------------
+    CROW_ROUTE(app, "/admin/courses/<int>").methods("PUT"_method)([&db](const crow::request &req, int id){
+        auto roleHeader = req.get_header_value("role");
+        if (roleHeader != "ADMIN") return crow::response(403, "Access denied");
+
         auto body = crow::json::load(req.body);
-        if (!body || !body.has("role") || !checkRole(body["role"].s(), "ADMIN"))
+        if (!body || !body.has("name")) return crow::response(400, "Invalid JSON");
+
+        Course c;
+        c.name = body["name"].s();
+
+        try {
+            db.updateCourse(id, c);
+            return crow::response(200, "Course updated");
+        } catch (...) {
+            return crow::response(500, "Error updating course");
+        }
+    });
+
+    // ----------------- GET /admin/courses -----------------
+    CROW_ROUTE(app, "/admin/courses").methods("GET"_method)([&db](const crow::request &req){
+        auto roleHeader = req.get_header_value("role");
+        if (roleHeader != "ADMIN")
             return crow::response(403, "Access denied");
 
-        std::string first_name = body["first_name"].s();
-        std::string last_name = body["last_name"].s();
-        std::string dob = body["dob"].s();
-
         try {
-            pqxx::work txn(conn);
-            txn.exec_prepared("insert_student", first_name, last_name, dob);
-            txn.commit();
+            auto courses = db.getAllCourses();
 
-            crow::json::wvalue res;
-            res["status"] = "student added";
-            return crow::response(200, res);
-        } catch (const std::exception &e) {
-            crow::json::wvalue res;
-            res["error"] = e.what();
-            return crow::response(500, res);
+            crow::json::wvalue result;
+            for (size_t i = 0; i < courses.size(); ++i) {
+                result[i]["id"] = courses[i].id;
+                result[i]["name"] = courses[i].name;
+            }
+
+            return crow::response{result};
+        } catch (...) {
+            return crow::response(500, "Error loading courses");
         }
     });
 
-    // =====================
-    // Запуск сервера
-    // =====================
+    // GET /admin/students
+    CROW_ROUTE(app, "/admin/students").methods("GET"_method)([&db](const crow::request &){
+        auto students = db.getAllStudents();
+        crow::json::wvalue res;
+        int i = 0;
+        for (auto &s : students) {
+            res[i]["id"] = s.id;
+            res[i]["first_name"] = s.first_name;
+            res[i]["last_name"] = s.last_name;
+            res[i]["dob"] = s.dob;
+            res[i]["group_id"] = s.group_id;
+            i++;
+        }
+        return crow::response(res);
+    });
+
+    // POST /admin/students
+    CROW_ROUTE(app, "/admin/students").methods("POST"_method)([&db](const crow::request &req){
+        auto body = crow::json::load(req.body);
+        if (!body || !body.has("first_name") || !body.has("last_name") || !body.has("dob") || !body.has("group_id"))
+            return crow::response(400, "Invalid JSON");
+
+        Student s;
+        s.first_name = body["first_name"].s();
+        s.last_name = body["last_name"].s();
+        s.dob = body["dob"].s();
+        s.group_id = body["group_id"].i();
+
+        try {
+            db.addStudent(s);
+            return crow::response(200, "Student added");
+        } catch (...) {
+            return crow::response(500, "Error adding student");
+        }
+    });    
+
+    CROW_ROUTE(app, "/students/<int>/grades").methods("GET"_method)([&db](const crow::request &, int student_id){
+        auto grades = db.getGradesByStudent(student_id);
+        crow::json::wvalue res;
+        int i = 0;
+        for (auto &g : grades) {
+            res[i]["course_id"] = g.course_id;
+            res[i]["grade"] = g.grade;
+            res[i]["present"] = g.present;
+            res[i]["date_assigned"] = g.date_assigned;
+            i++;
+        }
+        return crow::response(res);
+    });
+
+    CROW_ROUTE(app, "/students/<int>/profile").methods("GET"_method)([&db](const crow::request &, int student_id){
+        try {
+            auto students = db.getAllStudents();
+            for (auto &s : students) {
+                if (s.id == student_id) {
+                    crow::json::wvalue res;
+                    res["id"] = s.id;
+                    res["first_name"] = s.first_name;
+                    res["last_name"] = s.last_name;
+                    res["dob"] = s.dob;
+                    res["group_id"] = s.group_id;
+                    return crow::response(res);
+                }
+            }
+            return crow::response(404, "Student not found");
+        } catch (...) {
+            return crow::response(500, "Error fetching profile");
+        }
+    });
+
+    CROW_ROUTE(app, "/students/<int>/group").methods("GET"_method)([&db](const crow::request &, int student_id){
+        try {
+            auto students = db.getAllStudents();
+            int group_id = 0;
+
+            // Находим группу студента
+            for (auto &s : students) {
+                if (s.id == student_id) {
+                    group_id = s.group_id;
+                    break;
+                }
+            }
+            if (group_id == 0) return crow::response(404, "Student not found");
+
+            struct StudentAvg {
+                int id;
+                std::string first_name;
+                std::string last_name;
+                double average;
+            };
+
+            std::vector<StudentAvg> groupData;
+
+            for (auto &s : students) {
+                if (s.group_id != group_id) continue;
+
+                auto grades = db.getGradesByStudent(s.id);
+                double sum = 0;
+                int count = 0;
+                for (auto &g : grades) {
+                    if (g.grade > 0) {
+                        sum += g.grade;
+                        count++;
+                    }
+                }
+                double avg = count > 0 ? sum / count : 0;
+
+                groupData.push_back({s.id, s.first_name, s.last_name, avg});
+            }
+
+            // Сортировка по среднему баллу (убывание)
+            std::sort(groupData.begin(), groupData.end(), [](const StudentAvg &a, const StudentAvg &b){
+                return a.average > b.average;
+            });
+
+            crow::json::wvalue res;
+            for (size_t i = 0; i < groupData.size(); ++i) {
+                res[i]["id"] = groupData[i].id;
+                res[i]["first_name"] = groupData[i].first_name;
+                res[i]["last_name"] = groupData[i].last_name;
+                res[i]["average_grade"] = groupData[i].average;
+            }
+
+            return crow::response(res);
+        } catch (...) {
+            return crow::response(500, "Error fetching group data");
+        }
+    });
+
+    // GET /student/profile
+    CROW_ROUTE(app, "/student/profile").methods("GET"_method)([&db](const crow::request& req){
+        auto role = req.get_header_value("role");
+        if (role != "STUDENT")
+            return crow::response(403, "Access denied");
+
+        int student_id = std::stoi(req.get_header_value("user_id")); // или из сессии
+
+        auto students = db.getAllStudents();
+        for (auto &s : students) {
+            if (s.id == student_id) {
+                crow::json::wvalue res;
+                res["first_name"] = s.first_name;
+                res["last_name"]  = s.last_name;
+                res["dob"]        = s.dob;
+                res["group_id"]   = s.group_id;
+                return crow::response(res);
+            }
+        }
+        return crow::response(404, "Profile not found");
+    });
+
+    // GET /admin/students/<id>/profile
+    CROW_ROUTE(app, "/admin/students/<int>/profile").methods("GET"_method)([&db](const crow::request& req, int id){
+        if (req.get_header_value("role") != "ADMIN")
+            return crow::response(403, "Access denied");
+
+        auto students = db.getAllStudents();
+        for (auto &s : students) {
+            if (s.id == id) {
+                crow::json::wvalue res;
+                res["first_name"] = s.first_name;
+                res["last_name"]  = s.last_name;
+                res["dob"]        = s.dob;
+                res["group_id"]   = s.group_id;
+                return crow::response(res);
+            }
+        }
+        return crow::response(404, "Student not found");
+    });
+
+    // PUT /admin/students/<id>/profile
+    CROW_ROUTE(app, "/admin/students/<int>/profile").methods("PUT"_method)([&db](const crow::request& req, int id){
+        if (req.get_header_value("role") != "ADMIN")
+            return crow::response(403, "Access denied");
+
+        auto body = crow::json::load(req.body);
+        if (!body)
+            return crow::response(400, "Invalid JSON");
+
+        Student s;
+        if (body.has("first_name")) s.first_name = body["first_name"].s();
+        if (body.has("last_name"))  s.last_name  = body["last_name"].s();
+        if (body.has("dob"))        s.dob        = body["dob"].s();
+        if (body.has("group_id"))   s.group_id   = body["group_id"].i();
+
+        try {
+            db.updateStudent(id, s);
+            return crow::response(200, "Profile updated");
+        } catch (...) {
+            return crow::response(500, "Error updating profile");
+        }
+    });
+    
+    // GET /student/grades
+    CROW_ROUTE(app, "/student/grades").methods("GET"_method)
+    ([&db](const crow::request& req){
+        if (req.get_header_value("role") != "STUDENT")
+            return crow::response(403, "Access denied");
+
+        int student_id = std::stoi(req.get_header_value("user_id"));
+
+        auto grades = db.getGradesByStudent(student_id);
+        auto courses = db.getAllCourses();
+
+        // id курса -> название
+        std::unordered_map<int, std::string> courseNames;
+        for (auto &c : courses)
+            courseNames[c.id] = c.name;
+
+        // course_id -> список оценок
+        std::unordered_map<int, std::vector<int>> grouped;
+
+        for (auto &g : grades) {
+            if (g.grade > 0)
+                grouped[g.course_id].push_back(g.grade);
+        }
+
+        crow::json::wvalue res;
+        int i = 0;
+
+        for (auto &[course_id, list] : grouped) {
+            double sum = 0;
+            for (int g : list) sum += g;
+            double avg = sum / list.size();
+
+            res[i]["course"] = courseNames[course_id];
+            res[i]["grades"] = crow::json::wvalue::list(list.begin(), list.end());
+            res[i]["average"] = avg;
+            i++;
+        }
+
+        return crow::response(res);
+    });
+
+
     app.port(18080).multithreaded().run();
 }

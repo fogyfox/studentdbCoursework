@@ -2,37 +2,190 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Студент</title>
+    <title>Личный кабинет студента</title>
+    <style>
+        .tab { display: none; }
+        .tab.active { display: block; }
+        button.tab-button { margin-right: 5px; margin-bottom: 10px; }
+        table { border-collapse: collapse; width: 80%; margin-bottom: 20px; }
+        th, td { border: 1px solid black; padding: 5px; text-align: left; }
+    </style>
 </head>
 <body>
 
-<h2>Мои оценки</h2>
-<ul id="grades"></ul>
+<h2>Личный кабинет студента</h2>
 
-<button onclick="logout()">Выйти</button>
+<!-- Кнопки вкладок -->
+<div>
+    <button class="tab-button" data-tab="grades">Оценки</button>
+    <button class="tab-button" data-tab="profile">Профиль</button>
+    <button class="tab-button" data-tab="group">Группа</button>
+    <button class="tab-button" data-tab="password">Сброс пароля</button>
+</div>
+
+<!-- Вкладка: Оценки -->
+<div id="grades" class="tab active">
+    <h3>Оценки</h3>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Предмет</th>
+                <th>Оценки</th>
+                <th>Средний балл</th>
+            </tr>
+        </thead>
+        <tbody id="gradesTable"></tbody>
+    </table>
+</div>
+
+
+<!-- Вкладка: Профиль -->
+<div id="profile" class="tab">
+    <h3>Профиль</h3>
+    <table id="profileTable">
+        <tbody></tbody>
+    </table>
+</div>
+
+<!-- Вкладка: Группа -->
+<div id="group" class="tab">
+    <h3>Ваша группа</h3>
+    <table id="groupTable">
+        <thead>
+            <tr><th>Студент</th><th>Средний балл</th></tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<!-- Вкладка: Сброс пароля -->
+<div id="password" class="tab">
+    <h3>Сменить пароль</h3>
+    <form id="resetPasswordForm">
+        <input type="password" id="oldPassword" placeholder="Старый пароль" required><br><br>
+        <input type="password" id="newPassword" placeholder="Новый пароль" required><br><br>
+        <button type="submit">Сменить пароль</button>
+    </form>
+    <p id="passwordMessage" style="color:green"></p>
+    <p id="passwordError" style="color:red"></p>
+</div>
 
 <script src="main.js"></script>
 <script>
-checkRole("STUDENT");
+const roleHeader = sessionStorage.getItem("role") || "STUDENT";
 
+// --------------------
+// Переключение вкладок
+// --------------------
+document.querySelectorAll(".tab-button").forEach(btn => {
+    btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach(tab => tab.classList.remove("active"));
+        document.getElementById(btn.dataset.tab).classList.add("active");
+    });
+});
+
+// --------------------
+// Загрузка оценок
+// --------------------
 async function loadGrades() {
-    const data = await apiFetch("/grades?role=STUDENT");
-    const list = document.getElementById("grades");
+    const data = await apiFetch("/student/grades");
 
-    if (!data.grades) {
-        list.innerHTML = "<li>Нет данных</li>";
+    const tbody = document.getElementById("gradesTable");
+    tbody.innerHTML = "";
+
+    if (!Array.isArray(data) || data.length === 0) {
+        tbody.innerHTML =
+            `<tr><td colspan="3">Оценок пока нет</td></tr>`;
         return;
     }
 
-    data.grades.forEach(g => {
-        const li = document.createElement("li");
-        li.textContent =
-            `Курс ID: ${g.course_id}, Оценка: ${g.grade}, Присутствие: ${g.present ? "Да" : "Нет"}`;
-        list.appendChild(li);
+    data.forEach(row => {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+            <td>${row.course}</td>
+            <td>${row.grades.join(", ")}</td>
+            <td>${row.average.toFixed(2)}</td>
+        `;
+
+        tbody.appendChild(tr);
     });
 }
 
-loadGrades();
+// --------------------
+// Профиль студента
+// --------------------
+async function loadProfile() {
+    const res = await apiFetch("/student/profile");
+
+    const tbody = document.querySelector("#profileTable tbody");
+    tbody.innerHTML = "";
+
+    if (res.error) {
+        tbody.innerHTML = `<tr><td colspan="2">Профиль не заполнен</td></tr>`;
+        return;
+    }
+
+    Object.entries(res).forEach(([key, value]) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${key}</td><td>${value}</td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+// --------------------
+// Список группы с рейтингом
+// --------------------
+async function loadGroup() {
+    const res = await apiFetch("/student/group", { method: "GET", headers: { role: roleHeader } });
+    const tbody = document.querySelector("#groupTable tbody");
+    tbody.innerHTML = "";
+
+    res.forEach(student => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${student.first_name} ${student.last_name}</td>
+            <td>${student.average_grade.toFixed(2)}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// --------------------
+// Сброс пароля
+// --------------------
+document.getElementById("resetPasswordForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    const oldPassword = document.getElementById("oldPassword").value;
+    const newPassword = document.getElementById("newPassword").value;
+
+    const res = await apiFetch("/student/password", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", role: roleHeader },
+        body: JSON.stringify({ oldPassword, newPassword })
+    });
+
+    if (res.status === "success") {
+        document.getElementById("passwordMessage").textContent = "Пароль успешно изменён!";
+        document.getElementById("passwordError").textContent = "";
+        document.getElementById("resetPasswordForm").reset();
+    } else {
+        document.getElementById("passwordMessage").textContent = "";
+        document.getElementById("passwordError").textContent = res.error || "Ошибка";
+    }
+});
+
+// --------------------
+// Инициализация
+// --------------------
+document.addEventListener("DOMContentLoaded", () => {
+    loadGrades();
+    loadProfile();
+    loadGroup();
+});
+
+
 </script>
 
 </body>

@@ -1,36 +1,36 @@
 # Компилятор и флаги
 CXX = g++
-CXXFLAGS = -std=c++17 -I../external -pthread -Wall -Wextra
-LDFLAGS = -lssl -lcrypto -lpqxx -lpq
+CXXFLAGS = -std=c++17 -Wall -Wextra -I../external -Icore -Iauth -Idb -pthread
 
-# Исходники
-SRCS = main.cpp crypto.cpp auth.cpp db.cpp
-OBJS = $(SRCS:.cpp=.o)
+# Объекты
+OBJS = main.o crypto.o auth.o db.o 
 
-# Имя итогового файла
+# Имя исполняемого файла
 TARGET = server
 
-# -----------------------------
-# Основная цель: сборка сервера
-# -----------------------------
+# ---------------------------
+# Правила сборки
+# ---------------------------
+
 all: $(TARGET)
 
+# Компиляция исполняемого файла
 $(TARGET): $(OBJS)
-	$(CXX) $(OBJS) $(LDFLAGS) -o $(TARGET)
+	$(CXX) $(OBJS) -lssl -lcrypto -lpqxx -lpq -pthread -o $(TARGET)
 
-# -----------------------------
-# Компиляция .cpp -> .o
-# -----------------------------
-%.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+# Компиляция исходников
+main.o: main.cpp
+	$(CXX) $(CXXFLAGS) -c main.cpp -o main.o
 
-# -----------------------------
-# Очистка сборки
-# -----------------------------
+crypto.o: crypto.cpp
+	$(CXX) $(CXXFLAGS) -c crypto.cpp -o crypto.o
+
+auth/auth.o: auth.cpp auth.h
+	$(CXX) $(CXXFLAGS) -c auth.cpp -o auth.o
+
+db/db.o: db.cpp db.h
+	$(CXX) $(CXXFLAGS) -c db.cpp -o db.o
+
+# Очистка
 clean:
 	rm -f $(OBJS) $(TARGET)
-
-# -----------------------------
-# Пересборка "чистая"
-# -----------------------------
-rebuild: clean all
