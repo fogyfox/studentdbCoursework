@@ -335,4 +335,64 @@ async function renderTeachers() {
     });
 }
 
+async function fetchGroups() {
+    return await apiFetch("/admin/groups", { method: "GET" });
+}
 
+async function renderGroup() {
+    try {
+        const studentId = sessionStorage.getItem("userId");
+        const groupData = await apiFetch(`/students/${studentId}/group`);
+        
+        const tableBody = document.querySelector("#groupTable tbody");
+        if (!tableBody || groupData.error) return;
+
+        tableBody.innerHTML = groupData.map(member => `
+            <tr>
+                <td>${member.name}</td>
+                <td>${member.average_grade.toFixed(2)}</td>
+            </tr>
+        `).join("");
+    } catch (err) {
+        console.error("Ошибка при загрузке группы:", err);
+    }
+}
+
+async function deleteGroup(id) {
+    if (!confirm("Удалить группу? Это может затронуть студентов!")) return;
+    await apiFetch(`/admin/groups/${id}`, { method: "DELETE" });
+    renderGroups();
+}
+
+// Функция для получения и отображения списка групп
+async function renderGroups() {
+    const groups = await fetchGroups();
+    if (!groups || groups.error) return;
+
+    const table = document.getElementById("groupsTable");
+    table.innerHTML = "";
+    groups.forEach(g => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td>${g.id}</td>
+            <td>${g.name}</td>
+            <td>
+                <button onclick="deleteGroup(${g.id})">Удалить</button>
+            </td>
+        `;
+        table.appendChild(row);
+    });
+}
+
+// В блок инициализации (DOMContentLoaded)
+document.getElementById("addGroupBtn")?.addEventListener("click", async () => {
+    const name = document.getElementById("newGroupName").value;
+    if (!name) return alert("Введите название");
+    
+    await apiFetch("/admin/groups", {
+        method: "POST",
+        body: JSON.stringify({ name })
+    });
+    document.getElementById("newGroupName").value = "";
+    renderGroups();
+});

@@ -3,6 +3,7 @@
 #include <vector>
 #include <pqxx/pqxx>
 #include <mutex>
+#include <crow.h>
 
 struct User {
     int id;
@@ -123,7 +124,9 @@ public:
     // Grades
     void addGrade(const Grade &g);
     std::vector<Grade> getGradesByStudent(int student_id);
-    std::vector<StudentRating> getGroupRating(int group_id);
+    crow::json::wvalue getGroupRating(int student_id);
+
+    crow::json::wvalue getGroupList(int student_id);
 
     // Groups
     void addGroup(const Group &g);
@@ -147,4 +150,9 @@ public:
     void setGrade(int student_id, int course_id, const std::string &lesson_date, const std::string &grade);
     std::vector<GradeEntry> getGradesByStudentAndCourse(int student_id, int course_id);
     void setGradeByDate(int student_id, int course_id, const std::string &date, const std::string &grade);
+    void addGroup(const std::string &name);
+    void deleteGroup(int id);
+    crow::json::wvalue getStudentGrades(int student_id);
+    int getStudentIdByUserId(int user_id);
+    crow::json::wvalue getStudentProfile(int student_id);
 };

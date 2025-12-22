@@ -21,6 +21,7 @@
     <button class="tab-button" data-tab="students">Студенты</button>
     <button class="tab-button" data-tab="teachers">Преподаватели</button>
     <button class="tab-button" data-tab="courses">Предметы</button>
+    <button class="tab-button" data-tab="groups">Группы</button>
 </div>
 
 <!-- ========================= -->
@@ -81,6 +82,8 @@
     <button id="addStudentBtn">Создать</button>
 </div>
 
+
+
 <!-- ========================= -->
 <!-- Вкладка: Преподаватели -->
 <!-- ========================= -->
@@ -108,6 +111,25 @@
     <input id="newTeacherGroups" placeholder="ID групп через запятую">
     <button id="addTeacherBtn">Создать</button>
 </div>
+
+<div id="groups" class="tab">
+    <h3>Управление группами</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Название</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody id="groupsTable"></tbody>
+    </table>
+
+    <h4>Создать новую группу</h4>
+    <input id="newGroupName" type="text" placeholder="Название (напр. ПОВТ-21)" />
+    <button id="addGroupBtn">Создать</button>
+</div>
+
 
 <!-- ========================= -->
 <!-- Вкладка: Предметы -->
@@ -139,6 +161,8 @@ if (role !== "ADMIN") {
     location.href = "index.html";
 }
 
+
+
 /* =========================
    Переключение вкладок
 ========================= */
@@ -152,6 +176,7 @@ document.querySelectorAll(".tab-button").forEach(btn => {
         if (btn.dataset.tab === "students") renderStudents();
         if (btn.dataset.tab === "teachers") renderTeachers();
         if (btn.dataset.tab === "courses") renderCourses();
+        if (btn.dataset.tab === "groups") renderGroups();
     });
 });
 
@@ -160,6 +185,7 @@ document.querySelectorAll(".tab-button").forEach(btn => {
 // =========================
 renderUsers();
 renderCourses();
+
 </script>
 </body>
 </html>
