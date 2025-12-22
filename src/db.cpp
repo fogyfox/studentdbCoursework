@@ -40,11 +40,12 @@ Database::Database(const std::string &conn_str) : conn(conn_str) {
     conn.prepare("delete_student",
         "DELETE FROM students WHERE id = $1");
     conn.prepare("get_student_grades", 
-        "SELECT c.name, g.grade "
+        "SELECT c.name as course_name, g.grade, l.lesson_date as date_assigned " // Важно: l.lesson_date as date_assigned
         "FROM grades g "
         "JOIN lessons l ON g.lesson_id = l.id "
         "JOIN courses c ON l.course_id = c.id "
-        "WHERE g.student_id = $1");
+        "WHERE g.student_id = $1 "
+        "ORDER BY l.lesson_date DESC");;
     conn.prepare("get_student_profile", 
         "SELECT s.id, u.first_name, u.last_name, s.dob, g.name as group_name "
         "FROM students s "
@@ -70,6 +71,12 @@ Database::Database(const std::string &conn_str) : conn(conn_str) {
     conn.prepare("get_group_by_id", "SELECT id, name FROM groups WHERE id = $1");
     conn.prepare("delete_group", "DELETE FROM groups WHERE id = $1");
     conn.prepare("update_group", "UPDATE groups SET name = $1 WHERE id = $2");
+    conn.prepare("get_group_members", 
+    "SELECT u.first_name, u.last_name "
+    "FROM students s "
+    "JOIN users u ON s.user_id = u.id "
+    "WHERE s.group_id = (SELECT group_id FROM students WHERE id = $1) "
+    "ORDER BY u.last_name, u.first_name");
 
     // -------------------- Courses --------------------
     conn.prepare("insert_course", "INSERT INTO courses (name) VALUES ($1)");
@@ -729,25 +736,19 @@ void Database::deleteGroup(int id) {
 }
 
 crow::json::wvalue Database::getStudentGrades(int student_id) {
-    std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
+    pqxx::result r = txn.exec_prepared("get_student_grades", student_id);
     
-    // Выполняем подготовленный запрос
-    auto r = txn.exec_prepared("get_student_grades", student_id);
-    
-    crow::json::wvalue res = crow::json::wvalue::list();
-    for (size_t i = 0; i < r.size(); ++i) {
-        res[i]["course_name"] = r[i][0].as<std::string>();
-        res[i]["grade"] = r[i][1].as<std::string>(); // Тип text, может быть 'Н'
+    std::vector<crow::json::wvalue> grades;
+    for (auto row : r) {
+        crow::json::wvalue g;
+        g["course_name"] = row["course_name"].as<std::string>();
+        g["grade"] = row["grade"].as<std::string>();
+        // Проверьте, что имя в кавычках совпадает с алиасом из SQL
+        g["date_assigned"] = row["date_assigned"].as<std::string>(); 
+        grades.push_back(std::move(g));
     }
-    return res;
-}
-
-int Database::getStudentIdByUserId(int user_id) {
-    pqxx::work txn(conn);
-    auto r = txn.exec_prepared("get_sid_by_uid", user_id);
-    if (r.empty()) return -1;
-    return r[0][0].as<int>();
+    return crow::json::wvalue(grades);
 }
 
 crow::json::wvalue Database::getStudentProfile(int student_id) {
@@ -770,4 +771,36 @@ crow::json::wvalue Database::getStudentProfile(int student_id) {
     res["dob"] = r[0][3].as<std::string>();
     res["group_id"] = r[0][4].as<int>();
     return res;
+}
+
+int Database::getStudentIdByUserId(int user_id) {
+    try {
+        pqxx::work txn(conn);
+        // Ищем ID в таблице students, где user_id равен переданному параметру
+        auto r = txn.exec_params("SELECT id FROM students WHERE user_id = $1", user_id);
+        
+        if (r.empty()) {
+            return -1; // Если записи нет, возвращаем -1
+        }
+        
+        return r[0][0].as<int>();
+    } catch (const std::exception &e) {
+        std::cerr << "DB Error (getStudentIdByUserId): " << e.what() << std::endl;
+        return -1;
+    }
+}
+
+crow::json::wvalue Database::getGroupMembers(int student_id) {
+    pqxx::work txn(conn);
+    // Используем подготовленное выражение "get_group_members"
+    pqxx::result r = txn.exec_prepared("get_group_members", student_id);
+    
+    std::vector<crow::json::wvalue> members;
+    for (auto row : r) {
+        crow::json::wvalue member;
+        member["first_name"] = row[0].as<std::string>();
+        member["last_name"] = row[1].as<std::string>();
+        members.push_back(std::move(member));
+    }
+    return crow::json::wvalue(members);
 }

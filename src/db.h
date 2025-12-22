@@ -154,5 +154,6 @@ public:
     void deleteGroup(int id);
     crow::json::wvalue getStudentGrades(int student_id);
     int getStudentIdByUserId(int user_id);
+    crow::json::wvalue getGroupMembers(int student_id);
     crow::json::wvalue getStudentProfile(int student_id);
 };

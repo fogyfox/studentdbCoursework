@@ -11,6 +11,15 @@
         button.tab-button { margin-right: 5px; margin-bottom: 10px; }
         table { border-collapse: collapse; width: 80%; margin-bottom: 20px; }
         th, td { border: 1px solid black; padding: 5px; text-align: left; }
+        .grade-item {
+            cursor: help;
+            border-bottom: 1px dotted #666;
+            padding: 2px 5px;
+            display: inline-block;
+        }
+        .grade-item:hover {
+            background-color: #f0f0f0;
+        }
     </style>
 </head>
 <body>
@@ -32,12 +41,13 @@
         <thead>
             <tr>
                 <th>Предмет</th>
-                <th>Оценка</th>
-                <th>Дата получения</th> </tr>
+                <th>Оценки (наведите для просмотра даты)</th>
+            </tr>
         </thead>
         <tbody id="gradesTable"></tbody>
     </table>
 </div>
+
 
 <!-- Вкладка: Профиль -->
 <div id="profile" class="tab">
@@ -52,12 +62,12 @@
     <table id="groupTable">
         <thead>
             <tr>
-                <th>Имя</th>
-                <th>Фамилия</th>
+                <th>Ученик</th>
                 <th>Средний балл</th>
             </tr>
         </thead>
-        <tbody></tbody> </table>
+        <tbody id="groupTableBody"></tbody> 
+    </table>
 </div>
 
 <!-- Вкладка: Сброс пароля -->

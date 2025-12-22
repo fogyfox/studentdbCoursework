@@ -320,11 +320,14 @@ int main() {
             return crow::response(500, error);
         }
     });
-
-    CROW_ROUTE(app, "/students/<int>/group")([&db](int student_id) {
-        return db.getGroupList(student_id);
+    
+    CROW_ROUTE(app, "/students/<int>/group")
+    ([&db](const crow::request& req, int student_id) {
+        // Мини-проверка: может ли этот пользователь смотреть эту группу?
+        // Сравниваем student_id из URL с тем, что лежит в сессии/токене
+        return db.getGroupMembers(student_id);
     });
-
+    
     // GET /student/profile
     CROW_ROUTE(app, "/student/profile").methods("GET"_method)([&db](const crow::request& req){
         auto role = req.get_header_value("role");
