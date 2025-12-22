@@ -6,7 +6,9 @@
     <style>
         .tab { display: none; }
         .tab.active { display: block; }
-        button.tab-button { margin-right: 5px; }
+        button.tab-button { margin-right: 5px; margin-bottom:5px; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 15px; }
+        th, td { border: 1px solid #aaa; padding: 5px; text-align: left; }
     </style>
 </head>
 <body>
@@ -16,6 +18,8 @@
 <!-- Кнопки вкладок -->
 <div>
     <button class="tab-button" data-tab="users">Пользователи</button>
+    <button class="tab-button" data-tab="students">Студенты</button>
+    <button class="tab-button" data-tab="teachers">Преподаватели</button>
     <button class="tab-button" data-tab="courses">Предметы</button>
 </div>
 
@@ -24,12 +28,11 @@
 <!-- ========================= -->
 <div id="users" class="tab active">
     <h3>Пользователи</h3>
-
-    <table border="1">
+    <table>
         <thead>
         <tr>
             <th>ID</th>
-            <th>Логин</th>
+            <th>ФИО</th> <th>Логин</th>
             <th>Роль</th>
             <th>Действия</th>
         </tr>
@@ -37,8 +40,8 @@
         <tbody id="usersTable"></tbody>
     </table>
 
-    <h3>Добавить пользователя</h3>
-    <input id="newUserLogin" placeholder="Логин">
+    <h4>Добавить пользователя</h4>
+    <input id="newUserFirstName" placeholder="Имя"> <input id="newUserLastName" placeholder="Фамилия"> <input id="newUserLogin" placeholder="Логин">
     <input id="newUserPassword" type="password" placeholder="Пароль">
     <select id="newUserRole">
         <option value="STUDENT">STUDENT</option>
@@ -49,12 +52,69 @@
 </div>
 
 <!-- ========================= -->
+<!-- Вкладка: Студенты -->
+<!-- ========================= -->
+<div id="students" class="tab">
+    <h3>Студенты</h3>
+    <table>
+        <thead>
+        <tr>
+            <th>ID</th>
+            <th>Имя</th>
+            <th>Фамилия</th>
+            <th>Логин</th>
+            <th>Дата рождения</th>
+            <th>Группа</th>
+            <th>Действия</th>
+        </tr>
+        </thead>
+        <tbody id="studentsTable"></tbody>
+    </table>
+
+    <h4>Добавить студента</h4>
+    <input id="newStudentFirstName" placeholder="Имя">
+    <input id="newStudentLastName" placeholder="Фамилия">
+    <input id="newStudentDob" type="date">
+    <input id="newStudentGroup" placeholder="ID группы">
+    <input id="newStudentLogin" placeholder="Логин">
+    <input id="newStudentPassword" type="password" placeholder="Пароль">
+    <button id="addStudentBtn">Создать</button>
+</div>
+
+<!-- ========================= -->
+<!-- Вкладка: Преподаватели -->
+<!-- ========================= -->
+<div id="teachers" class="tab">
+    <h3>Преподаватели</h3>
+    <table>
+        <thead>
+        <tr>
+            <th>ID</th>
+            <th>Имя</th>
+            <th>Фамилия</th>
+            <th>Логин</th>
+            <th>Группы</th>
+            <th>Действия</th>
+        </tr>
+        </thead>
+        <tbody id="teachersTable"></tbody>
+    </table>
+
+    <h4>Добавить преподавателя</h4>
+    <input id="newTeacherFirstName" placeholder="Имя">
+    <input id="newTeacherLastName" placeholder="Фамилия">
+    <input id="newTeacherLogin" placeholder="Логин">
+    <input id="newTeacherPassword" type="password" placeholder="Пароль"> 
+    <input id="newTeacherGroups" placeholder="ID групп через запятую">
+    <button id="addTeacherBtn">Создать</button>
+</div>
+
+<!-- ========================= -->
 <!-- Вкладка: Предметы -->
 <!-- ========================= -->
 <div id="courses" class="tab">
     <h3>Предметы</h3>
-
-    <table border="1">
+    <table>
         <thead>
         <tr>
             <th>ID</th>
@@ -65,12 +125,13 @@
         <tbody id="coursesTable"></tbody>
     </table>
 
-    <h3>Добавить предмет</h3>
+    <h4>Добавить предмет</h4>
     <input id="newSubjectName" placeholder="Название предмета">
     <button id="addCourseBtn">Создать</button>
 </div>
 
-<script src="main.js"></script>
+<script src="js/api.js"></script>
+<script src="js/admin.js"></script>
 <script>
 const role = sessionStorage.getItem("role");
 if (role !== "ADMIN") {
@@ -86,113 +147,19 @@ document.querySelectorAll(".tab-button").forEach(btn => {
         document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
         document.getElementById(btn.dataset.tab).classList.add("active");
 
-        if (btn.dataset.tab === "users") loadUsers();
-        if (btn.dataset.tab === "courses") loadCourses();
+        // ЗАМЕНИ ЭТО:
+        if (btn.dataset.tab === "users") renderUsers();
+        if (btn.dataset.tab === "students") renderStudents();
+        if (btn.dataset.tab === "teachers") renderTeachers();
+        if (btn.dataset.tab === "courses") renderCourses();
     });
 });
 
-/* =========================
-   Пользователи
-========================= */
-async function loadUsers() {
-    const users = await apiFetch("/admin/users", { method: "GET" });
-    const table = document.getElementById("usersTable");
-    table.innerHTML = "";
-
-    users.forEach(u => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-            <td>${u.id}</td>
-            <td>${u.login}</td>
-            <td>${u.role}</td>
-            <td>
-                <button onclick="deleteUser(${u.id})">Удалить</button>
-                <button onclick="resetPassword(${u.id}, '${u.login}', '${u.role}')">Сбросить пароль</button>
-            </td>
-        `;
-        table.appendChild(tr);
-    });
-}
-
-// Функция сброса пароля
-function resetPassword(id, login, role) {
-    const newPassword = prompt("Введите новый пароль для пользователя:");
-    if (!newPassword) return;
-
-    apiFetch(`/admin/users/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", role: sessionStorage.getItem("role") },
-        body: JSON.stringify({ login, role, password: newPassword })
-    }).then(res => {
-        if (res.status === "success") alert("Пароль успешно сброшен");
-        else alert(res.error || "Ошибка при сбросе пароля");
-    });
-}
-
-document.getElementById("addUserBtn").onclick = async () => {
-    const login = newUserLogin.value;
-    const password = newUserPassword.value;
-    const role = newUserRole.value;
-
-    const res = await apiFetch("/admin/users", {
-        method: "POST",
-        body: JSON.stringify({ login, password, role })
-    });
-
-    if (res.error) alert(res.error);
-    else loadUsers();
-};
-
-window.deleteUser = async (id) => {
-    const res = await apiFetch(`/admin/users/${id}`, { method: "DELETE" });
-    if (res.error) alert(res.error);
-    else loadUsers();
-};
-
-/* =========================
-   Предметы
-========================= */
-async function loadCourses() {
-    const courses = await apiFetch("/admin/courses", { method: "GET" });
-    const table = document.getElementById("coursesTable");
-    table.innerHTML = "";
-
-    courses.forEach(s => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-            <td>${s.id}</td>
-            <td>${s.name}</td>
-            <td>
-                <button onclick="deleteSubject(${s.id})">Удалить</button>
-            </td>
-        `;
-        table.appendChild(tr);
-    });
-}
-
-document.getElementById("addCourseBtn").onclick = async () => {
-    const name = newSubjectName.value;
-
-    const res = await apiFetch("/admin/courses", {
-        method: "POST",
-        body: JSON.stringify({ name })
-    });
-
-    if (res.error) alert(res.error);
-    else loadCourses();
-};
-
-window.deleteSubject = async (id) => {
-    const res = await apiFetch(`/admin/courses/${id}`, { method: "DELETE" });
-    if (res.error) alert(res.error);
-    else loadCourses();
-};
-
-/* =========================
-   Начальная загрузка
-========================= */
-loadUsers();
+// =========================
+// Инициализация вкладки по умолчанию
+// =========================
+renderUsers();
+renderCourses();
 </script>
-
 </body>
 </html>

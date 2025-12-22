@@ -3,54 +3,244 @@
 <head>
     <meta charset="UTF-8">
     <title>Преподаватель</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1, h2 { margin-top: 20px; }
+        table { border-collapse: collapse; width: 90%; margin-top: 10px; }
+        th, td { border: 1px solid black; padding: 5px; text-align: center; }
+        th { background-color: #f0f0f0; }
+        td[contenteditable="true"] { background-color: #e0ffe0; }
+        .course-btn, .group-btn { margin: 5px; padding: 5px 10px; cursor: pointer; border: 1px solid #999; border-radius: 4px; }
+        .selected { background-color: #add8e6; } /* подсветка выбранного курса/группы */
+        #msg { color: green; margin-top: 10px; font-weight: bold; }
+        #teacherCourses, #teacherGroups { margin-bottom: 10px; }
+    </style>
 </head>
 <body>
 
-<h2>Добавить оценку</h2>
+<h1>Преподавательская панель</h1>
 
-<form id="gradeForm">
-    <input type="number" id="student_id" placeholder="ID студента" required><br><br>
-    <input type="number" id="course_id" placeholder="ID курса" required><br><br>
-    <input type="number" id="grade" placeholder="Оценка" required><br><br>
+<h2>Ваши курсы</h2>
+<div id="teacherCourses"></div>
 
-    <label>
-        <input type="checkbox" id="present"> Присутствовал
-    </label><br><br>
+<h2>Группы</h2>
+<div id="teacherGroups"></div>
 
-    <input type="date" id="date_assigned" required><br><br>
-
-    <button type="submit">Добавить</button>
-</form>
+<h2>Таблица оценок</h2>
+<table id="teacherGradesTable"></table>
 
 <p id="msg"></p>
 
 <button onclick="logout()">Выйти</button>
 
-<script src="main.js"></script>
+<script src="js/api.js"></script>
+<script src="js/teacher.js"></script>
+
 <script>
 checkRole("TEACHER");
 
-document.getElementById("gradeForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
+function logout() {
+    sessionStorage.clear();
+    window.location.href = "/login";
+}
 
-    const body = {
-        role: "TEACHER",
-        student_id: Number(student_id.value),
-        course_id: Number(course_id.value),
-        grade: Number(grade.value),
-        present: present.checked,
-        date_assigned: date_assigned.value
-    };
+let selectedCourse = null;
+let selectedGroup = null;
 
-    const res = await apiFetch("/grades", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+// --------------------
+// 1. Список курсов преподавателя
+// --------------------
+async function renderTeacherCourses() {
+    const teacherId = Number(sessionStorage.getItem("userId"));
+    if (isNaN(teacherId)) {
+        alert("Не удалось получить ID преподавателя. Перезайдите в систему.");
+        window.location.href = "/login";
+    }
+    console.log("Teacher ID:", teacherId);
+
+    const courses = await apiFetch(`/teacher/${teacherId}/courses`, { method: "GET" });
+    console.log("Courses from server:", courses);
+
+    const container = document.getElementById("teacherCourses");
+    container.innerHTML = "";
+
+    if (!courses || courses.length === 0) {
+        container.innerHTML = "<p>У вас пока нет курсов.</p>";
+        return;
+    }
+
+    courses.forEach(c => {
+        // Подстраиваемся под поля: если сервер возвращает {id, name}
+        const courseId = c.course_id ?? c.id;
+        const courseName = c.course_name ?? c.name;
+
+        const btn = document.createElement("button");
+        btn.textContent = courseName;
+        btn.className = "course-btn";
+        btn.onclick = () => {
+            selectedCourse = courseId;
+            renderTeacherGroups(courseId);
+        };
+        container.appendChild(btn);
+    });
+}
+
+// --------------------
+// 2. Список групп по выбранному курсу
+// --------------------
+async function renderTeacherGroups(courseId) {
+    const groups = await apiFetch(`/teacher/courses/${courseId}/groups`, { method: "GET" });
+    console.log("Groups from server:", groups);
+
+    const container = document.getElementById("teacherGroups");
+    container.innerHTML = "";
+
+    if (!groups || groups.length === 0) {
+        container.innerHTML = "<p>Для этого курса нет групп.</p>";
+        return;
+    }
+
+    groups.forEach(g => {
+        // Подстраиваемся под поля: если сервер возвращает {group_id, group_name} или {id, name}
+        const groupId = g.group_id ?? g.id;
+        const groupName = g.group_name ?? g.name;
+
+        const btn = document.createElement("button");
+        btn.textContent = groupName;
+        btn.className = "group-btn";
+        btn.onclick = () => {
+            selectedGroup = groupId;
+            renderGradesTable(selectedCourse, groupId);
+        };
+        container.appendChild(btn);
+    });
+}
+// --------------------
+// 3. Подсветка выбранного элемента
+// --------------------
+function highlightSelection(container, selectedBtn) {
+    container.querySelectorAll("button").forEach(btn => btn.classList.remove("selected"));
+    selectedBtn.classList.add("selected");
+}
+
+// --------------------
+// 4. Таблица оценок
+// --------------------
+async function renderGradesTable(courseId, groupId) {
+    const table = document.getElementById("teacherGradesTable");
+    table.innerHTML = "";
+
+    const gradeCells = await apiFetch(`/teacher/courses/${courseId}/groups/${groupId}/grades`, { method: "GET" });
+    if (gradeCells.error) {
+        table.innerHTML = `<tr><td colspan="100">${gradeCells.error}</td></tr>`;
+        return;
+    }
+
+    // --------------------
+    // 1. Собираем уникальные даты уроков
+    // --------------------
+    const datesSet = new Set();
+    gradeCells.forEach(cell => datesSet.add(cell.lesson_date));
+    const dates = Array.from(datesSet).sort(); // сортируем по дате
+
+    // --------------------
+    // 2. Формируем студентов и их оценки
+    // --------------------
+    const studentsMap = {}; // student_id -> { student_name, grades: { date: grade } }
+    gradeCells.forEach(cell => {
+        if (!studentsMap[cell.student_id]) {
+            studentsMap[cell.student_id] = {
+                student_name: cell.student_name,
+                grades: {}
+            };
+        }
+        studentsMap[cell.student_id].grades[cell.lesson_date] = cell.grade;
     });
 
-    document.getElementById("msg").textContent = res.status || res.error;
+    const students = Object.entries(studentsMap).map(([id, s]) => ({
+        student_id: id,
+        student_name: s.student_name,
+        grades: s.grades
+    }));
+
+    // --------------------
+    // 3. Заголовок таблицы
+    // --------------------
+    const header = document.createElement("tr");
+    header.innerHTML = "<th>Студент</th>";
+    dates.forEach(d => header.innerHTML += `<th>${d}</th>`);
+    table.appendChild(header);
+
+    // --------------------
+    // 4. Студенты и оценки
+    // --------------------
+    students.forEach(student => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${student.student_name}</td>`;
+
+        dates.forEach(date => {
+            const grade = student.grades[date] || "Н";
+            const td = document.createElement("td");
+            td.textContent = grade;
+            td.contentEditable = true;
+            td.dataset.studentId = student.student_id;
+            td.dataset.date = date;
+            td.dataset.courseId = courseId;
+            tr.appendChild(td);
+        });
+
+        table.appendChild(tr);
+    });
+
+    // --------------------
+    // 5. Редактирование оценок
+    // --------------------
+    table.querySelectorAll("td[contenteditable='true']").forEach(td => {
+        td.addEventListener("blur", async () => {
+            const value = td.textContent.trim();
+            let grade = value === "Н" ? 0 : Number(value);
+            if (value !== "Н" && (isNaN(grade) || grade < 1 || grade > 5)) {
+                alert("Оценка должна быть 1-5 или 'Н'");
+                td.textContent = ""; 
+                return;
+            }
+
+            const body = {
+                student_id: td.dataset.studentId,
+                course_id: td.dataset.courseId,
+                grade: grade,
+                present: value !== "Н",
+                lesson_date: td.dataset.date
+            };
+
+            const resp = await apiFetch("/teacher/grade", {
+                method: "POST",
+                body: JSON.stringify(body),
+                headers: { "Content-Type": "application/json" }
+            });
+
+            const msg = document.getElementById("msg");
+            msg.textContent = resp.status || resp.error;
+            setTimeout(() => { msg.textContent = ""; }, 3000);
+        });
+    });
+}
+
+
+function checkRole(expectedRole) {
+    const role = sessionStorage.getItem("role");
+    if (role !== expectedRole) {
+        alert("Доступ запрещён!");
+        window.location.href = "/login";
+    }
+}
+
+// --------------------
+// 5. Инициализация
+// --------------------
+document.addEventListener("DOMContentLoaded", () => {
+    renderTeacherCourses();
 });
 </script>
-
 </body>
 </html>

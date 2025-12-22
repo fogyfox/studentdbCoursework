@@ -2,20 +2,35 @@
 #include <string>
 #include <vector>
 #include <pqxx/pqxx>
+#include <mutex>
 
 struct User {
     int id;
     std::string login;
     std::string password_hash;
     std::string role;
+    std::string first_name;
+    std::string last_name;
 };
 
 struct Student {
     int id;
+    int user_id;
     std::string first_name;
     std::string last_name;
+    std::string login; // Добавь это поле, если его нет
     std::string dob;
     int group_id;
+};
+
+struct Teacher {
+    int id;
+    int user_id;
+    std::string first_name;
+    std::string last_name;
+    std::string login;
+    std::vector<int> group_ids;
+    std::vector<std::string> group_names; // для фронтенда
 };
 
 struct Course {
@@ -28,7 +43,7 @@ struct Grade {
     int course_id;
     int grade;
     bool present;
-    std::string date_assigned;
+    std::string lesson_date;
 };
 
 struct Group {
@@ -43,26 +58,61 @@ struct StudentRating {
     double avg_grade;
 };
 
+// предметы преподавателя
+struct TeacherCourse {
+    int course_id;
+    std::string course_name;
+};
+
+// группа + предмет
+struct CourseGroup {
+    int group_id;
+    std::string group_name;
+};
+
+struct Lesson {
+    int id;
+    std::string lesson_date;
+};
+
+struct GradeEntry {
+    std::string lesson_date;
+    int grade;
+};
+
+
+
+// строка таблицы оценок
+struct GradeCell {
+    int student_id;
+    std::string student_name;
+    int lesson_id;
+    std::string lesson_date;
+    std::string grade; // "1".."5" или "Н"
+};
+
 class Database {
     pqxx::connection conn;
+    std::mutex db_mutex;
 
 public:
     Database(const std::string &conn_str);
 
     // Users
     User getUserByLogin(const std::string &login);
-    void addUser(const User &u);
+    int addUser(const User &u);
     std::vector<User> getAllUsers();
     void deleteUser(int id);
     void updateUser(int id, const User &u);
     void updateUserPassword(int id, const std::string &new_hash);
 
     // Students
-    void addStudent(const Student &s);
+    void addStudent(const Student &s, std::string login, std::string password);
     std::vector<Student> getAllStudents();
     std::vector<Student> getStudentsByGroup(int group_id);
     void deleteStudent(int id);
     void updateStudent(int id, const Student &s);
+    Student getStudentByUserId(int user_id);
 
     // Courses
     void addCourse(const Course &c);
@@ -80,4 +130,21 @@ public:
     std::vector<Group> getAllGroups();
     Group getGroupById(int id);
 
+    //Teacher
+    std::vector<TeacherCourse> getTeacherCourses(int teacher_id);
+    std::vector<CourseGroup> getGroupsByCourse(int course_id);
+    // таблица оценок
+    std::vector<GradeCell> getGradeTable(int course_id, int group_id);
+
+    std::vector<Teacher> getAllTeachers();
+    void addTeacher(const std::string &login, const std::string &password, const std::string &first_name, const std::string &last_name, const std::vector<int> &group_ids);
+    
+    void updateTeacher(int id, const Teacher& t);
+    void deleteTeacher(int id);
+    Teacher getTeacherByUserId(int user_id);
+
+    std::vector<Lesson> getLessons(int course_id, int group_id);
+    void setGrade(int student_id, int course_id, const std::string &lesson_date, const std::string &grade);
+    std::vector<GradeEntry> getGradesByStudentAndCourse(int student_id, int course_id);
+    void setGradeByDate(int student_id, int course_id, const std::string &date, const std::string &grade);
 };

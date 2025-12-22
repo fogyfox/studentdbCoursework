@@ -1,3 +1,5 @@
+
+
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -71,122 +73,8 @@
     <p id="passwordError" style="color:red"></p>
 </div>
 
-<script src="main.js"></script>
-<script>
-const roleHeader = sessionStorage.getItem("role") || "STUDENT";
-
-// --------------------
-// Переключение вкладок
-// --------------------
-document.querySelectorAll(".tab-button").forEach(btn => {
-    btn.addEventListener("click", () => {
-        document.querySelectorAll(".tab").forEach(tab => tab.classList.remove("active"));
-        document.getElementById(btn.dataset.tab).classList.add("active");
-    });
-});
-
-// --------------------
-// Загрузка оценок
-// --------------------
-async function loadGrades() {
-    const data = await apiFetch("/student/grades");
-
-    const tbody = document.getElementById("gradesTable");
-    tbody.innerHTML = "";
-
-    if (!Array.isArray(data) || data.length === 0) {
-        tbody.innerHTML =
-            `<tr><td colspan="3">Оценок пока нет</td></tr>`;
-        return;
-    }
-
-    data.forEach(row => {
-        const tr = document.createElement("tr");
-
-        tr.innerHTML = `
-            <td>${row.course}</td>
-            <td>${row.grades.join(", ")}</td>
-            <td>${row.average.toFixed(2)}</td>
-        `;
-
-        tbody.appendChild(tr);
-    });
-}
-
-// --------------------
-// Профиль студента
-// --------------------
-async function loadProfile() {
-    const res = await apiFetch("/student/profile");
-
-    const tbody = document.querySelector("#profileTable tbody");
-    tbody.innerHTML = "";
-
-    if (res.error) {
-        tbody.innerHTML = `<tr><td colspan="2">Профиль не заполнен</td></tr>`;
-        return;
-    }
-
-    Object.entries(res).forEach(([key, value]) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${key}</td><td>${value}</td>`;
-        tbody.appendChild(tr);
-    });
-}
-
-// --------------------
-// Список группы с рейтингом
-// --------------------
-async function loadGroup() {
-    const res = await apiFetch("/student/group", { method: "GET", headers: { role: roleHeader } });
-    const tbody = document.querySelector("#groupTable tbody");
-    tbody.innerHTML = "";
-
-    res.forEach(student => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-            <td>${student.first_name} ${student.last_name}</td>
-            <td>${student.average_grade.toFixed(2)}</td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
-
-// --------------------
-// Сброс пароля
-// --------------------
-document.getElementById("resetPasswordForm").addEventListener("submit", async e => {
-    e.preventDefault();
-    const oldPassword = document.getElementById("oldPassword").value;
-    const newPassword = document.getElementById("newPassword").value;
-
-    const res = await apiFetch("/student/password", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", role: roleHeader },
-        body: JSON.stringify({ oldPassword, newPassword })
-    });
-
-    if (res.status === "success") {
-        document.getElementById("passwordMessage").textContent = "Пароль успешно изменён!";
-        document.getElementById("passwordError").textContent = "";
-        document.getElementById("resetPasswordForm").reset();
-    } else {
-        document.getElementById("passwordMessage").textContent = "";
-        document.getElementById("passwordError").textContent = res.error || "Ошибка";
-    }
-});
-
-// --------------------
-// Инициализация
-// --------------------
-document.addEventListener("DOMContentLoaded", () => {
-    loadGrades();
-    loadProfile();
-    loadGroup();
-});
-
-
-</script>
+<script src="js/api.js"></script>
+<script src="js/student.js"></script>
 
 </body>
 </html>
