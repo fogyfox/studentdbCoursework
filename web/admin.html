@@ -82,13 +82,11 @@
     <button id="addStudentBtn">Создать</button>
 </div>
 
-
-
-<!-- ========================= -->
 <!-- Вкладка: Преподаватели -->
-<!-- ========================= -->
 <div id="teachers" class="tab">
     <h3>Преподаватели</h3>
+    
+    <!-- Таблица преподавателей -->
     <table>
         <thead>
         <tr>
@@ -96,40 +94,45 @@
             <th>Имя</th>
             <th>Фамилия</th>
             <th>Логин</th>
-            <th>Группы</th>
+            <th>Группы (кураторство)</th>
             <th>Действия</th>
         </tr>
         </thead>
-        <tbody id="teachersTable"></tbody>
+        <tbody id="teachersListTable"></tbody> <!-- Исправил ID для ясности -->
     </table>
 
+    <!-- Форма создания (Точь-в-точь как у студентов) -->
     <h4>Добавить преподавателя</h4>
     <input id="newTeacherFirstName" placeholder="Имя">
     <input id="newTeacherLastName" placeholder="Фамилия">
     <input id="newTeacherLogin" placeholder="Логин">
-    <input id="newTeacherPassword" type="password" placeholder="Пароль"> 
-    <input id="newTeacherGroups" placeholder="ID групп через запятую">
+    <input id="newTeacherPassword" type="password" placeholder="Пароль">
+    <input id="newTeacherGroups" placeholder="ID групп (через запятую: 1, 2)">
     <button id="addTeacherBtn">Создать</button>
-</div>
 
-<div id="groups" class="tab">
-    <h3>Управление группами</h3>
+    <hr style="margin: 30px 0; border: 0; border-top: 1px solid #eee;">
+
+    <!-- Блок назначения нагрузки (сделан тоже в минималистичном стиле) -->
+    <h3>Управление нагрузкой (Расписание)</h3>
+    <div style="margin-bottom: 15px;">
+        <label>Кто:</label> <select id="loadTeacherSelect" style="margin-right: 10px;"></select>
+        <label>Предмет:</label> <select id="loadCourseSelect" style="margin-right: 10px;"></select>
+        <label>Группа:</label> <select id="loadGroupSelect" style="margin-right: 10px;"></select>
+        <button onclick="assignTeacherLoad()">Назначить</button>
+    </div>
+
     <table>
         <thead>
             <tr>
-                <th>ID</th>
-                <th>Название</th>
-                <th>Действия</th>
+                <th>Преподаватель</th>
+                <th>Предмет</th>
+                <th>Группа</th>
+                <th>Действие</th>
             </tr>
         </thead>
-        <tbody id="groupsTable"></tbody>
+        <tbody id="teachersLoadList"></tbody>
     </table>
-
-    <h4>Создать новую группу</h4>
-    <input id="newGroupName" type="text" placeholder="Название (напр. ПОВТ-21)" />
-    <button id="addGroupBtn">Создать</button>
 </div>
-
 
 <!-- ========================= -->
 <!-- Вкладка: Предметы -->
@@ -152,6 +155,30 @@
     <button id="addCourseBtn">Создать</button>
 </div>
 
+<!-- Вкладка: Группы -->
+<div id="groups" class="tab">
+    <h3>Управление группами</h3>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Название</th>
+                <th>Студентов</th> <!-- Новая полезная колонка -->
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody id="groupsListTable"></tbody> <!-- Дали четкий ID -->
+    </table>
+
+    <h4>Создать новую группу</h4>
+    <!-- Форма в одну строку -->
+    <div style="display: flex; gap: 10px; align-items: center;">
+        <input id="newGroupName" type="text" placeholder="Название (напр. ПОВТ-21)" style="flex: 1; max-width: 300px;">
+        <button id="addGroupBtn" style="white-space: nowrap;">Создать группу</button>
+    </div>
+</div>
+
 <script src="js/api.js"></script>
 <script src="js/admin.js"></script>
 <script>
@@ -160,6 +187,8 @@ if (role !== "ADMIN") {
     alert("Доступ запрещён");
     location.href = "index.html";
 }
+
+
 
 
 

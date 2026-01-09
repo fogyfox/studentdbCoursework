@@ -2,146 +2,75 @@
 #include <stdexcept>
 #include <algorithm>
 #include <unordered_map>
-#include<iostream>
-#include<mutex>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <mutex>
 #include <crow.h>
 
+std::string trim(const std::string& str) {
+    size_t first = str.find_first_not_of(" \t\n\r");
+    if (std::string::npos == first) return str;
+    size_t last = str.find_last_not_of(" \t\n\r");
+    return str.substr(first, (last - first + 1));
+}
+
 Database::Database(const std::string &conn_str) : conn(conn_str) {
-    // -------------------- Users --------------------
-    conn.prepare("get_user_by_login",
-        "SELECT id, login, password_hash, role, first_name, last_name FROM users WHERE login = $1");
-    conn.prepare("insert_user",
-        "INSERT INTO users (login, password_hash, role, first_name, last_name) VALUES ($1, $2, $3, $4, $5) RETURNING id");
-    conn.prepare("get_all_users",
-        "SELECT id, login, role, first_name, last_name FROM users ORDER BY id");
-    conn.prepare("update_user",
-        "UPDATE users SET login=$1, role=$2, first_name=$3, last_name=$4 WHERE id=$5");
-    conn.prepare("update_user_password",
-        "UPDATE users SET password_hash=$1 WHERE id=$2");
-    conn.prepare("delete_user",
-        "DELETE FROM users WHERE id=$1");
-    conn.prepare("get_user_id_by_student", "SELECT user_id FROM students WHERE id = $1");
-    conn.prepare("delete_user_by_id", "DELETE FROM users WHERE id = $1");
-    conn.prepare("get_user_id_by_teacher", "SELECT user_id FROM teachers WHERE id = $1");
-    conn.prepare("get_auth_data", "SELECT id, password, role FROM users WHERE login = $1");
-    // -------------------- Students --------------------
-    conn.prepare("insert_student",
-        "INSERT INTO students (user_id, dob, group_id) VALUES ($1, $2, $3)");
-    conn.prepare("get_all_students",
-        "SELECT s.id, s.user_id, u.first_name, u.last_name, s.dob, s.group_id "
-        "FROM students s "
-        "LEFT JOIN users u ON s.user_id = u.id " // LEFT JOIN надежнее для отладки
-        "ORDER BY s.id");
-    conn.prepare("get_students_by_group",
-        "SELECT s.id, s.user_id, u.first_name, u.last_name, s.dob, s.group_id "
-        "FROM students s JOIN users u ON s.user_id = u.id WHERE s.group_id = $1 ORDER BY u.last_name");
-    conn.prepare("update_student",
-        "UPDATE students SET dob=$1, group_id=$2 WHERE id=$3");
-    conn.prepare("delete_student",
-        "DELETE FROM students WHERE id = $1");
-    conn.prepare("get_student_grades", 
-        "SELECT c.name as course_name, g.grade, l.lesson_date as date_assigned " // Важно: l.lesson_date as date_assigned
-        "FROM grades g "
-        "JOIN lessons l ON g.lesson_id = l.id "
-        "JOIN courses c ON l.course_id = c.id "
-        "WHERE g.student_id = $1 "
-        "ORDER BY l.lesson_date DESC");;
-    conn.prepare("get_student_profile", 
-        "SELECT s.id, u.first_name, u.last_name, s.dob, g.name as group_name "
-        "FROM students s "
-        "JOIN users u ON s.user_id = u.id "
-        "JOIN groups g ON s.group_id = g.id "
-        "WHERE s.id = $1");
+    // 1. Открываем файл с запросами
+    // Убедитесь, что файл queries.sql лежит рядом с исполняемым файлом
+    std::ifstream file("queries.sql");
     
-    // Запрос для получения одногруппников и их среднего балла
-    conn.prepare("get_group_rating", 
-        "SELECT u.first_name, u.last_name, "
-        "AVG(CASE WHEN g.grade ~ '^[0-9]+$' THEN g.grade::integer ELSE NULL END) as avg_grade "
-        "FROM students s "
-        "JOIN users u ON s.user_id = u.id "
-        "LEFT JOIN grades g ON s.id = g.student_id "
-        "WHERE s.group_id = (SELECT group_id FROM students WHERE id = $1) "
-        "GROUP BY s.id, u.first_name, u.last_name "
-        "ORDER BY avg_grade DESC NULLS LAST");
-    conn.prepare("get_sid_by_uid", "SELECT id FROM students WHERE user_id = $1");
+    if (!file.is_open()) {
+        throw std::runtime_error("FATAL ERROR: Could not open queries.sql! Make sure the file exists.");
+    }
 
-    // -------------------- Groups --------------------
-    conn.prepare("insert_group", "INSERT INTO groups (name) VALUES ($1)");
-    conn.prepare("get_all_groups", "SELECT id, name FROM groups ORDER BY id");
-    conn.prepare("get_group_by_id", "SELECT id, name FROM groups WHERE id = $1");
-    conn.prepare("delete_group", "DELETE FROM groups WHERE id = $1");
-    conn.prepare("update_group", "UPDATE groups SET name = $1 WHERE id = $2");
-    conn.prepare("get_group_members", 
-    "SELECT u.first_name, u.last_name "
-    "FROM students s "
-    "JOIN users u ON s.user_id = u.id "
-    "WHERE s.group_id = (SELECT group_id FROM students WHERE id = $1) "
-    "ORDER BY u.last_name, u.first_name");
+    std::string line;
+    std::string currentName;
+    std::string currentQuery;
 
-    // -------------------- Courses --------------------
-    conn.prepare("insert_course", "INSERT INTO courses (name) VALUES ($1)");
-    conn.prepare("get_all_courses", "SELECT id, name FROM courses ORDER BY id");
-    conn.prepare("update_course", "UPDATE courses SET name=$1 WHERE id=$2");
-    conn.prepare("delete_course", "DELETE FROM courses WHERE id=$1");
-    
-    // -------------------- Lessons --------------------
-    conn.prepare("get_lessons",
-        "SELECT id, lesson_date FROM lessons WHERE course_id=$1 AND group_id=$2 ORDER BY lesson_date");
-    conn.prepare("get_lesson_by_course_date",
-        "SELECT id FROM lessons WHERE course_id=$1 AND lesson_date=$2");
-    conn.prepare("get_lesson_by_id", 
-        "SELECT id FROM lessons WHERE course_id = $1 AND lesson_date = $2");
-    conn.prepare("get_lesson_id", "SELECT id FROM lessons WHERE course_id = $1 AND lesson_date = $2");    
+    while (std::getline(file, line)) {
+        // Убираем лишние пробелы по краям
+        std::string trimmed = trim(line);
+        if (trimmed.empty()) continue; // пропускаем пустые строки
 
-    // -------------------- Grades --------------------
-    conn.prepare("get_grade_by_student_lesson",
-        "SELECT grade FROM grades WHERE student_id=$1 AND lesson_id=$2");
-    conn.prepare("upsert_grade",
-        "INSERT INTO grades (student_id, lesson_id, grade) VALUES ($1, $2, $3) "
-        "ON CONFLICT (student_id, lesson_id) DO UPDATE SET grade = EXCLUDED.grade");
+        // Проверяем, это имя запроса? (начинается с "-- name:")
+        if (trimmed.rfind("-- name:", 0) == 0) {
+            // Если у нас уже был накоплен запрос, сохраняем его
+            if (!currentName.empty() && !currentQuery.empty()) {
+                try {
+                    conn.prepare(currentName, currentQuery);
+                    // std::cout << "Prepared: " << currentName << std::endl; // Для отладки
+                } catch (const std::exception& e) {
+                    std::cerr << "Error preparing " << currentName << ": " << e.what() << std::endl;
+                }
+            }
 
-    // -------------------- Teachers --------------------
-    conn.prepare("get_all_teachers",
-        "SELECT u.id AS user_id, u.login, u.first_name, u.last_name, g.id AS group_id, g.name AS group_name "
-        "FROM users u "
-        "LEFT JOIN teacher_groups tg ON u.id = tg.teacher_id "
-        "LEFT JOIN groups g ON tg.group_id = g.id "
-        "WHERE u.role='TEACHER' ORDER BY u.last_name");
-    conn.prepare("get_teacher_base_info",
-        "SELECT id, first_name, last_name, login FROM users WHERE id = $1 AND role = 'TEACHER'");
-    conn.prepare("insert_teacher", 
-        "INSERT INTO teachers (user_id) VALUES ($1) RETURNING id");
-    conn.prepare("insert_teacher_group",
-        "INSERT INTO teacher_groups (teacher_id, group_id) VALUES ($1, $2)");
-    conn.prepare("delete_teacher_groups",
-        "DELETE FROM teacher_groups WHERE teacher_id=$1");
-    conn.prepare("get_teacher_by_user_id",
-        "SELECT id, first_name, last_name FROM users WHERE id = $1 AND role = 'TEACHER'");
-    conn.prepare("get_teacher_groups_list",
-        "SELECT g.id, g.name FROM teacher_groups tg "
-        "JOIN groups g ON tg.group_id = g.id WHERE tg.teacher_id = $1");
-    conn.prepare("insert_user_teacher", 
-        "INSERT INTO users (login, password_hash, role, first_name, last_name) VALUES ($1, $2, $3, $4, $5) RETURNING id");
-    conn.prepare("insert_teacher_groups", 
-        "INSERT INTO teacher_groups (teacher_id, group_id) VALUES ($1, $2)");
+            // Начинаем новый запрос
+            // "-- name: my_query" -> (длина 8 символов)
+            currentName = trim(trimmed.substr(8));
+            currentQuery = "";
+        } 
+        else {
+            // Это часть SQL запроса, добавляем к строке
+            currentQuery += line + " ";
+        }
+    }
 
-    conn.prepare("insert_teacher_profile", 
-        "INSERT INTO teachers (user_id) VALUES ($1) RETURNING id");
-
-    conn.prepare("link_teacher_group", 
-    "INSERT INTO teacher_groups (teacher_id, group_id) VALUES ($1, $2)");
-    // Важно: если используете таблицу teacher_courses для предметов
-    conn.prepare("get_teacher_courses",
-        "SELECT c.id, c.name FROM teacher_courses tc JOIN courses c ON c.id = tc.course_id WHERE tc.teacher_id = $1");
-    conn.prepare("get_groups_by_course",
-        "SELECT DISTINCT g.id, g.name FROM lessons l JOIN groups g ON g.id = l.group_id WHERE l.course_id = $1");
+    // Сохраняем самый последний запрос в файле
+    if (!currentName.empty() && !currentQuery.empty()) {
+        try {
+            conn.prepare(currentName, currentQuery);
+        } catch (const std::exception& e) {
+            std::cerr << "Error preparing " << currentName << ": " << e.what() << std::endl;
+        }
+    }
 }
 
 // -------------------- Users --------------------
 User Database::getUserByLogin(const std::string &login) {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
-    auto r = txn.exec_params("SELECT id, login, password_hash, role FROM users WHERE LOWER(login) = LOWER($1)", login);
+    auto r = txn.exec_prepared("get_user_by_login", login);
     
     // 1. Сначала проверяем и извлекаем данные
     if (r.empty()) {
@@ -213,38 +142,37 @@ void Database::updateUser(int id, const User &u) {
 }
 
 void Database::updateUserPassword(int id, const std::string &new_hash) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
+    
+    // Выполняем запрос из файла
     txn.exec_prepared("update_user_password", new_hash, id);
+    
     txn.commit();
 }
 
 // -------------------- Students --------------------
 void Database::addStudent(const Student &s, std::string login, std::string password) {
-    std::lock_guard<std::mutex> lock(db_mutex);
+    std::lock_guard<std::mutex> lock(db_mutex); // Блокировка
     pqxx::work txn(conn);
 
     // 1. Создаем юзера
     auto r = txn.exec_prepared("insert_user", login, password, "STUDENT", s.first_name, s.last_name);
     int new_user_id = r[0][0].as<int>();
 
-    // 2. Создаем студента, используя полученный user_id
-    // ВАЖНО: убедись, что "insert_student" в конструкторе принимает $1 (user_id), $2 (dob), $3 (group_id)
+    // 2. Создаем студента
     txn.exec_prepared("insert_student", new_user_id, s.dob, s.group_id);
-
-    txn.commit();
+    
+    txn.commit(); // КОММИТ ОБЯЗАТЕЛЕН
 }
+
 
 std::vector<Student> Database::getAllStudents() {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
 
     // Достаем всё явно, используя алиасы u и s
-    auto r = txn.exec(
-        "SELECT s.id, s.user_id, u.first_name, u.last_name, u.login, s.dob, s.group_id "
-        "FROM students s "
-        "JOIN users u ON s.user_id = u.id "
-        "ORDER BY s.id"
-    );
+    auto r = txn.exec_prepared("get_all_students");
 
     std::vector<Student> students;
     for (auto row : r) {
@@ -319,16 +247,7 @@ void Database::updateStudent(int id, const Student &s) {
 Student Database::getStudentByUserId(int user_id) {
     std::lock_guard<std::mutex> lock(db_mutex); // Не забывай про мьютекс
     pqxx::work txn(conn);
-
-    // 1. Добавляем JOIN, чтобы достать данные из таблицы users
-    // 2. Добавляем u.login в список SELECT
-    auto r = txn.exec_params(
-        "SELECT s.id, s.user_id, u.first_name, u.last_name, u.login, s.dob, s.group_id "
-        "FROM students s "
-        "JOIN users u ON s.user_id = u.id "
-        "WHERE s.user_id = $1",
-        user_id
-    );
+    auto r = txn.exec_prepared("get_student_by_user_id", user_id); 
 
     if (r.empty()) {
         throw std::runtime_error("Student profile not found");
@@ -357,6 +276,7 @@ void Database::addGroup(const Group &g) {
 }
 
 std::vector<Group> Database::getAllGroups() {
+    std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
     auto r = txn.exec_prepared("get_all_groups");
     std::vector<Group> groups;
@@ -462,25 +382,16 @@ crow::json::wvalue Database::getGroupRating(int student_id) {
 }
 
 crow::json::wvalue Database::getGroupList(int student_id) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
     
-    // 1. Сначала узнаем group_id самого студента
-    auto res_group = txn.exec_params("SELECT group_id FROM students WHERE id = $1", student_id);
+    // Сначала узнаем group_id самого студента
+    auto res_group = txn.exec_prepared("SELECT group_id FROM students WHERE id = $1", student_id);
     if (res_group.empty()) return crow::json::wvalue::list();
     int group_id = res_group[0][0].as<int>();
 
-    // 2. Получаем список всех студентов этой группы с их средним баллом
-    // Используем LEFT JOIN с оценками, чтобы студенты без оценок тоже отображались (с баллом 0)
-    auto r = txn.exec_params(
-        "SELECT u.first_name, u.last_name, AVG(CAST(g.grade AS INTEGER)) as avg_score "
-        "FROM students s "
-        "JOIN users u ON s.user_id = u.id "
-        "LEFT JOIN grades g ON s.id = g.student_id "
-        "WHERE s.group_id = $1 "
-        "GROUP BY u.id, u.first_name, u.last_name "
-        "ORDER BY avg_score DESC", 
-        group_id
-    );
+    // Получаем список всех студентов этой группы с их средним баллом
+    auto r = txn.exec_prepared("get_group_list_avg", group_id);
 
     crow::json::wvalue::list students_list;
     for (auto row : r) {
@@ -635,29 +546,29 @@ void Database::deleteTeacher(int teacher_id) {
 }
 
 Teacher Database::getTeacherByUserId(int user_id) {
+    // 1. БЛОКИРОВКА (Обязательно!)
+    std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
     
-    // 1. Получаем базу (имя, фамилия, логин)
+    // 2. Выполняем исправленный запрос
     auto r = txn.exec_prepared("get_teacher_base_info", user_id);
-    if (r.empty()) throw std::runtime_error("Teacher not found");
+    
+    if (r.empty()) {
+        throw std::runtime_error("Teacher profile not found for user_id=" + std::to_string(user_id));
+    }
 
     Teacher t;
-    t.user_id = r[0]["id"].as<int>();
-    t.id = t.user_id; // В новой модели они обычно совпадают
+    // Теперь здесь лежит ID из таблицы teachers, а не users
+    t.id = r[0]["id"].as<int>(); 
+    t.user_id = user_id;
     t.first_name = r[0]["first_name"].as<std::string>();
     t.last_name = r[0]["last_name"].as<std::string>();
     t.login = r[0]["login"].as<std::string>();
 
-    // 2. Получаем группы
-    auto gr = txn.exec_prepared("get_teacher_groups_list", user_id);
-    for (auto const& row : gr) {
-        t.group_ids.push_back(row[0].as<int>());
-        t.group_names.push_back(row[1].as<std::string>());
-    }
-
     txn.commit();
     return t;
 }
+
 
 
 
@@ -684,12 +595,7 @@ void Database::setGrade(int student_id, int course_id, const std::string& lesson
 
 std::vector<GradeEntry>Database::getGradesByStudentAndCourse(int student_id, int course_id) {
     pqxx::work w(conn);
-    auto r = w.exec_params(
-        "SELECT l.lesson_date, g.grade FROM grades g "
-        "JOIN lessons l ON l.id = g.lesson_id "
-        "WHERE g.student_id = $1 AND l.course_id = $2",
-        student_id, course_id
-    );
+    auto r = w.exec_prepared("get_grades_by_student_course", student_id, course_id);
 
     std::vector<GradeEntry> res;
     for (auto row : r) {
@@ -736,51 +642,80 @@ void Database::deleteGroup(int id) {
 }
 
 crow::json::wvalue Database::getStudentGrades(int student_id) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
-    pqxx::result r = txn.exec_prepared("get_student_grades", student_id);
+    auto r = txn.exec_prepared("get_student_grades", student_id); // Новый SQL
     
     std::vector<crow::json::wvalue> grades;
     for (auto row : r) {
         crow::json::wvalue g;
+        g["course_id"] = row["course_id"].as<int>(); // <--- ВАЖНО!
         g["course_name"] = row["course_name"].as<std::string>();
         g["grade"] = row["grade"].as<std::string>();
-        // Проверьте, что имя в кавычках совпадает с алиасом из SQL
         g["date_assigned"] = row["date_assigned"].as<std::string>(); 
         grades.push_back(std::move(g));
     }
     return crow::json::wvalue(grades);
 }
 
+
 crow::json::wvalue Database::getStudentProfile(int student_id) {
-    pqxx::work txn(conn);
-    // Соединяем таблицу students и users по ключу user_id
-    auto r = txn.exec_params(
-        "SELECT s.id, u.first_name, u.last_name, s.dob, s.group_id "
-        "FROM students s "
-        "JOIN users u ON s.user_id = u.id "
-        "WHERE s.id = $1", 
-        student_id
-    );
+    try {
+        // 1. ОБЯЗАТЕЛЬНО БЛОКИРУЕМ
+        std::lock_guard<std::mutex> lock(db_mutex);
+        pqxx::work txn(conn);
 
-    if (r.empty()) return crow::json::wvalue({{"error", "Not found"}});
+        // 2. Выполняем запрос (убедитесь, что в queries.sql он есть!)
+        // Имя запроса должно быть "get_student_profile"
+        auto r = txn.exec_prepared("get_student_profile", student_id);
 
-    crow::json::wvalue res;
-    res["id"] = r[0][0].as<int>();
-    res["first_name"] = r[0][1].as<std::string>();
-    res["last_name"] = r[0][2].as<std::string>();
-    res["dob"] = r[0][3].as<std::string>();
-    res["group_id"] = r[0][4].as<int>();
-    return res;
+        if (r.empty()) {
+            return crow::json::wvalue({{"error", "Profile not found in DB"}});
+        }
+
+        crow::json::wvalue res;
+        
+        // 3. Безопасное чтение полей (с проверкой на NULL)
+        res["id"] = r[0]["id"].as<int>();
+        
+        // first_name / last_name обычно NOT NULL, но лучше перестраховаться
+        res["first_name"] = r[0]["first_name"].is_null() ? "" : r[0]["first_name"].as<std::string>();
+        res["last_name"] = r[0]["last_name"].is_null() ? "" : r[0]["last_name"].as<std::string>();
+        
+        // Login добавили недавно - проверяем
+        res["login"] = r[0]["login"].is_null() ? "—" : r[0]["login"].as<std::string>();
+
+        // Дата рождения может быть NULL
+        res["dob"] = r[0]["dob"].is_null() ? "Не указана" : r[0]["dob"].as<std::string>();
+
+        // Имя группы (из JOIN) будет NULL, если student.group_id ссылается на несуществующую группу или NULL
+        res["group_name"] = r[0]["group_name"].is_null() ? "Нет группы" : r[0]["group_name"].as<std::string>();
+
+        // Не забываем коммит, хотя для SELECT он не обязателен, но txn должен корректно закрыться
+        txn.commit();
+        
+        return res;
+
+    } catch (const std::exception& e) {
+        // Логируем ошибку в консоль сервера, чтобы вы её увидели
+        std::cerr << "CRITICAL ERROR in getStudentProfile: " << e.what() << std::endl;
+        
+        crow::json::wvalue err;
+        err["error"] = std::string("Internal Server Error: ") + e.what();
+        return err;
+    }
 }
+
 
 int Database::getStudentIdByUserId(int user_id) {
     try {
+        std::lock_guard<std::mutex> lock(db_mutex); // ОБЯЗАТЕЛЬНО ДОБАВЬТЕ БЛОКИРОВКУ
         pqxx::work txn(conn);
-        // Ищем ID в таблице students, где user_id равен переданному параметру
-        auto r = txn.exec_params("SELECT id FROM students WHERE user_id = $1", user_id);
+        
+        auto r = txn.exec_prepared("get_sid_by_uid", user_id);
         
         if (r.empty()) {
-            return -1; // Если записи нет, возвращаем -1
+            return -1; 
         }
         
         return r[0][0].as<int>();
@@ -790,17 +725,109 @@ int Database::getStudentIdByUserId(int user_id) {
     }
 }
 
+
 crow::json::wvalue Database::getGroupMembers(int student_id) {
-    pqxx::work txn(conn);
-    // Используем подготовленное выражение "get_group_members"
-    pqxx::result r = txn.exec_prepared("get_group_members", student_id);
-    
-    std::vector<crow::json::wvalue> members;
-    for (auto row : r) {
-        crow::json::wvalue member;
-        member["first_name"] = row[0].as<std::string>();
-        member["last_name"] = row[1].as<std::string>();
-        members.push_back(std::move(member));
+    try {
+        std::lock_guard<std::mutex> lock(db_mutex);
+        pqxx::work txn(conn);
+        
+        // Выполняем обновленный запрос
+        pqxx::result r = txn.exec_prepared("get_group_members", student_id);
+        
+        std::vector<crow::json::wvalue> members;
+        for (auto row : r) {
+            crow::json::wvalue member;
+            // ID мы договорились не выводить, так что убираем его, если он не нужен для логики
+            member["first_name"] = row["first_name"].as<std::string>();
+            member["last_name"] = row["last_name"].as<std::string>();
+            
+            // Читаем средний балл. Если оценок нет, база вернет NULL -> заменяем на 0.0
+            member["average_grade"] = row["avg_grade"].is_null() ? 0.0 : row["avg_grade"].as<double>();
+            
+            members.push_back(std::move(member));
+        }
+        return crow::json::wvalue(members);
+    } catch (const std::exception& e) {
+        crow::json::wvalue error;
+        error["error"] = e.what();
+        return error;
     }
-    return crow::json::wvalue(members);
 }
+
+
+std::vector<crow::json::wvalue> Database::getStudentsInGroup(int group_id) {
+    pqxx::work txn(conn);
+    auto r = txn.exec_prepared("get_students_by_group", group_id);
+    std::vector<crow::json::wvalue> students;
+    for (auto row : r) {
+        crow::json::wvalue s;
+        s["id"] = row["id"].as<int>();
+        s["first_name"] = row["first_name"].as<std::string>();
+        s["last_name"] = row["last_name"].as<std::string>();
+        students.push_back(std::move(s));
+    }
+    return students;
+}
+
+void Database::addTeacherLoad(pqxx::work& txn, int tid, int cid, int gid) {
+    txn.exec_prepared("add_teacher_load", tid, cid, gid);
+}
+
+
+crow::json::wvalue Database::predictGrade(int student_id, int course_id) {
+    std::lock_guard<std::mutex> lock(db_mutex);
+    pqxx::work txn(conn);
+
+    // Получаем оценки от старых к новым
+    auto r = txn.exec_prepared("get_grades_for_predict", student_id, course_id);
+    
+    std::vector<int> grades;
+    for (auto row : r) {
+        std::string g_str = row[0].is_null() ? "Н" : row[0].as<std::string>();
+        // Для прогноза берем только цифры
+        if (g_str != "Н" && !g_str.empty()) {
+            try { grades.push_back(std::stoi(g_str)); } catch (...) {}
+        }
+    }
+    txn.commit(); // Закрываем транзакцию, дальше чистая математика
+
+    crow::json::wvalue res;
+    
+    if (grades.empty()) {
+        res["average"] = 0.0;
+        res["predicted"] = 0.0;
+        res["trend"] = "none";
+        return res;
+    }
+
+    // 1. Обычное среднее
+    double simple_sum = 0;
+    for (int g : grades) simple_sum += g;
+    double avg = simple_sum / grades.size();
+
+    // 2. Взвешенное среднее (Линейный рост весов)
+    // Оценки: 3, 4, 5. Веса: 1, 2, 3.
+    // (3*1 + 4*2 + 5*3) / (1+2+3) = 26 / 6 = 4.33
+    double weighted_sum = 0;
+    double weight_total = 0;
+    
+    for (size_t i = 0; i < grades.size(); ++i) {
+        double weight = i + 1; // Чем новее, тем больше вес
+        weighted_sum += grades[i] * weight;
+        weight_total += weight;
+    }
+    
+    double predicted = (weight_total > 0) ? (weighted_sum / weight_total) : 0;
+
+    // 3. Тренд
+    std::string trend = "stable";
+    if (predicted > avg + 0.15) trend = "up";      // Прогноз заметно выше среднего
+    else if (predicted < avg - 0.15) trend = "down"; // Прогноз заметно ниже
+
+    res["average"] = avg;
+    res["predicted"] = predicted;
+    res["trend"] = trend;
+
+    return res;
+}
+

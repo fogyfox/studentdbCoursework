@@ -42,18 +42,50 @@
             <tr>
                 <th>Предмет</th>
                 <th>Оценки (наведите для просмотра даты)</th>
+                <th>Прогноз </th>
             </tr>
         </thead>
         <tbody id="gradesTable"></tbody>
     </table>
 </div>
 
-
 <!-- Вкладка: Профиль -->
 <div id="profile" class="tab">
-    <h3>Профиль</h3>
-    <div id="profileContainer"></div>
+    <h3>Карточка студента</h3>
+    
+    <div class="profile-card" style="border: 1px solid #ddd; padding: 20px; border-radius: 8px; max-width: 500px; background: #f9f9f9; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="display: flex; align-items: center; margin-bottom: 20px;">
+            <!-- Иконка/Аватарка-заглушка -->
+            <div style="width: 60px; height: 60px; background: #007bff; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-right: 15px;">
+                🎓
+            </div>
+            <div>
+                <h2 id="p_fullname" style="margin: 0;">Загрузка...</h2>
+                <span id="p_role" style="color: #666; font-size: 0.9em;">Студент</span>
+            </div>
+        </div>
+
+        <table style="width: 100%; border: none;">
+            <tr>
+                <td style="border: none; padding: 8px 0; color: #555; width: 120px;">Группа:</td>
+                <td style="border: none; padding: 8px 0; font-weight: bold;" id="p_group">—</td>
+            </tr>
+            <tr>
+                <td style="border: none; padding: 8px 0; color: #555;">Логин:</td>
+                <td style="border: none; padding: 8px 0;" id="p_login">—</td>
+            </tr>
+            <tr>
+                <td style="border: none; padding: 8px 0; color: #555;">ID Студента:</td>
+                <td style="border: none; padding: 8px 0;" id="p_id">—</td>
+            </tr>
+            <tr>
+                <td style="border: none; padding: 8px 0; color: #555;">Дата рождения:</td>
+                <td style="border: none; padding: 8px 0;" id="p_dob">—</td>
+            </tr>
+        </table>
+    </div>
 </div>
+
 
 
 <!-- Вкладка: Группа -->
@@ -62,7 +94,7 @@
     <table id="groupTable">
         <thead>
             <tr>
-                <th>Ученик</th>
+                <th>Студент</th>
                 <th>Средний балл</th>
             </tr>
         </thead>

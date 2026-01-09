@@ -72,9 +72,6 @@ int main() {
             if (checkRole(u.role, "STUDENT")) {
                 int sid = db.getStudentIdByUserId(u.id);
                 if (sid != -1) {
-                    // ГЛАВНОЕ ИЗМЕНЕНИЕ: 
-                    // Передаем sid в ключе "userId", потому что именно его 
-                    // student.js берет из sessionStorage для запросов.
                     res["userId"] = sid; 
                     res["studentId"] = sid;
                 } else {
@@ -87,7 +84,6 @@ int main() {
             return crow::response(200, res);
 
         } catch (const std::exception &e) {
-            // Логируем реальную ошибку в консоль сервера, чтобы видеть, что пошло не так
             std::cerr << "Login error: " << e.what() << std::endl;
             return crow::response(401, crow::json::wvalue({{"error", "User not found"}}));
         }
@@ -106,7 +102,32 @@ int main() {
         } catch (...) {
             return crow::response(500, "Error updating password");
         }
-    });  
+    });
+
+    // PUT /admin/users/<id>/password — Сброс пароля
+    CROW_ROUTE(app, "/admin/users/<int>/password").methods("PUT"_method)
+    ([&db](const crow::request& req, int id){
+        // 1. Проверка прав админа
+        auto roleHeader = req.get_header_value("role");
+        if (roleHeader != "ADMIN") return crow::response(403, "Access denied");
+
+        // 2. Парсим JSON
+        auto body = crow::json::load(req.body);
+        if (!body || !body.has("password")) 
+            return crow::response(400, "Invalid JSON: 'password' required");
+
+        // 3. Хешируем и сохраняем
+        std::string raw_pass = body["password"].s();
+        std::string hashed_pass = hashPassword(raw_pass); // Функция из crypto.h
+
+        try {
+            db.updateUserPassword(id, hashed_pass);
+            return crow::response(200, "{\"status\":\"success\"}");
+        } catch (const std::exception& e) {
+            return crow::response(500, e.what());
+        }
+    });
+
 
     // ----------------- GET /admin/users -----------------
     CROW_ROUTE(app, "/admin/users").methods("GET"_method)([&db](const crow::request &req){
@@ -137,21 +158,31 @@ int main() {
         auto body = crow::json::load(req.body);
         if (!body || !body.has("login") || !body.has("password") || !body.has("role"))
             return crow::response(400, "Invalid JSON");
-    
+
         User u;
         u.login = body["login"].s();
         u.password_hash = hashPassword(body["password"].s());
         u.role = body["role"].s();
-        // НОВОЕ: извлекаем имена
         u.first_name = body.has("first_name") ? body["first_name"].s() : std::string("");
         u.last_name = body.has("last_name") ? body["last_name"].s() : std::string("");
-    
-        int new_id = db.addUser(u); // Предполагаем, что addUser возвращает ID
-    
-        crow::json::wvalue res;
-        res["id"] = new_id;
-        res["status"] = "success";
-        return crow::response(200, res);
+
+        try {
+            // 1. Создаем пользователя через твой метод
+            int new_id = db.addUser(u); 
+
+            // 2. ВЫПОЛНЯЕМ КОМАНДУ СИНХРОНИЗАЦИИ
+            // Это гарантирует, что пользователь попадет в таблицу teachers
+            pqxx::work txn(db.getConn());
+            txn.exec_prepared("sync_teachers"); 
+            txn.commit();
+
+            crow::json::wvalue res;
+            res["id"] = new_id;
+            res["status"] = "success";
+            return crow::response(200, res);
+        } catch (const std::exception &e) {
+            return crow::response(500, e.what());
+        }
     });
     // ----------------- DELETE /admin/users/<id> -----------------
     CROW_ROUTE(app, "/admin/users/<int>").methods("DELETE"_method)([&db](const crow::request &req, int id){
@@ -320,14 +351,14 @@ int main() {
             return crow::response(500, error);
         }
     });
-    
+
     CROW_ROUTE(app, "/students/<int>/group")
     ([&db](const crow::request& req, int student_id) {
         // Мини-проверка: может ли этот пользователь смотреть эту группу?
         // Сравниваем student_id из URL с тем, что лежит в сессии/токене
         return db.getGroupMembers(student_id);
     });
-    
+
     // GET /student/profile
     CROW_ROUTE(app, "/student/profile").methods("GET"_method)([&db](const crow::request& req){
         auto role = req.get_header_value("role");
@@ -556,86 +587,34 @@ int main() {
     });
 
 
-
-    // GET /teacher/journal?course_id=&group_id=
-    CROW_ROUTE(app, "/teacher/journal").methods("GET"_method)
-    ([&db](const crow::request& req){
-        if (req.get_header_value("role") != "TEACHER")
-            return crow::response(403);
-
-        int course_id = std::stoi(req.url_params.get("course_id"));
-        int group_id  = std::stoi(req.url_params.get("group_id"));
-
-        auto students = db.getStudentsByGroup(group_id);
-        auto lessons  = db.getLessons(course_id, group_id);
-
-        crow::json::wvalue res;
-
-        // колонки (даты)
-        for (size_t i = 0; i < lessons.size(); ++i)
-            res["lessons"][i]["id"] = lessons[i].id,
-            res["lessons"][i]["date"] = lessons[i].lesson_date;
-
-        // строки (студенты)
-        for (size_t i = 0; i < students.size(); ++i) {
-            res["students"][i]["id"] = students[i].id;
-            res["students"][i]["name"] =
-                students[i].last_name + " " + students[i].first_name;
-        }
-
-        return crow::response(res);
-    });
-
     // POST /teacher/grade
     CROW_ROUTE(app, "/teacher/grade").methods("POST"_method)([&db](const crow::request& req){
-        if (req.get_header_value("role") != "TEACHER") return crow::response(403);
-
-        auto body = crow::json::load(req.body);
-        if (!body) return crow::response(400);
-
-        int student_id = body["student_id"].i();
-        int course_id  = body["course_id"].i();
-        std::string date = body["lesson_date"].s();
-
-        // ИСПРАВЛЕНО: Читаем оценку как строку (для поддержки "Н" и цифр)
-        std::string grade;
-        if (body["grade"].t() == crow::json::type::String) {
-            grade = body["grade"].s(); // Если пришло "Н"
-        } else if (body["grade"].t() == crow::json::type::Number) {
-            grade = std::to_string(body["grade"].i()); // Если пришло число 5
-        } else {
-            grade = "Н"; // Значение по умолчанию
-        }
+        auto x = crow::json::load(req.body);
+        if (!x) return crow::response(400, "Invalid JSON");
 
         try {
-            db.setGradeByDate(student_id, course_id, date, grade);
-            return crow::response(200, "Saved");
-        } catch (const std::exception &e) {
-            return crow::response(500, "Error saving grade");
+            int student_id = x["student_id"].i();
+            int lesson_id = x["lesson_id"].i();
+            std::string grade = x["grade"].s(); // Может быть "5" или "Н"
+
+            // Проверка на пустую оценку (если учитель стер оценку) - опционально
+            // Если grade пустая строка, можно сделать DELETE запрос. 
+            // Но пока предположим, что мы просто обновляем.
+
+            pqxx::work txn(db.getConn());
+            txn.exec_prepared("upsert_grade", student_id, lesson_id, grade);
+            txn.commit();
+
+            return crow::response(200, "Grade updated");
+        } catch (const std::exception& e) {
+            crow::json::wvalue error;
+            error["error"] = e.what();
+            return crow::response(500, error);
         }
     });
 
     // ----------------- TEACHERS -----------------
-    
-    // GET /admin/teachers
-    CROW_ROUTE(app, "/admin/teachers").methods("GET"_method)([&db](const crow::request& req){
-        if (req.get_header_value("role") != "ADMIN")
-            return crow::response(403, "Access denied");
-    
-        auto teachers = db.getAllTeachers(); // возвращает vector<Teacher>
-        crow::json::wvalue res;
-    
-        for (size_t i = 0; i < teachers.size(); ++i) {
-            res[i]["id"] = teachers[i].id;
-            res[i]["first_name"] = teachers[i].first_name;
-            res[i]["last_name"] = teachers[i].last_name;
-            res[i]["login"] = teachers[i].login;
-            res[i]["group_ids"] = teachers[i].group_ids;           // vector<int>
-            res[i]["group_names"] = teachers[i].group_names;       // vector<string>
-        }
-    
-        return crow::response(res);
-    });
+
     
     // POST /admin/teachers
     CROW_ROUTE(app, "/admin/teachers").methods("POST"_method)([&db](const crow::request& req){
@@ -703,14 +682,27 @@ int main() {
             return crow::response(500, error_res);
         }
     });
+
     CROW_ROUTE(app, "/admin/groups").methods("GET"_method)([&db](){
-        auto groups = db.getAllGroups();
-        crow::json::wvalue res = crow::json::wvalue::list();
-        for (size_t i = 0; i < groups.size(); ++i) {
-            res[i]["id"] = groups[i].id;
-            res[i]["name"] = groups[i].name;
+        try {
+            std::lock_guard<std::mutex> lock(db.getMutex());
+            pqxx::work txn(db.getConn());
+            
+            // Теперь этот запрос возвращает и student_count
+            auto res = txn.exec_prepared("get_all_groups"); 
+            
+            crow::json::wvalue result = crow::json::wvalue::list();
+            for (size_t i = 0; i < res.size(); ++i) {
+                result[i]["id"] = res[i]["id"].as<int>();
+                result[i]["name"] = res[i]["name"].as<std::string>();
+                // Читаем количество студентов (если null, то 0)
+                result[i]["student_count"] = res[i]["student_count"].is_null() ? 0 : res[i]["student_count"].as<int>();
+            }
+            return crow::response(result);
+            
+        } catch (const std::exception& e) {
+            return crow::response(500, e.what());
         }
-        return res;
     });
 
     CROW_ROUTE(app, "/admin/groups").methods("POST"_method)([&db](const crow::request& req){
@@ -747,6 +739,212 @@ int main() {
         }
     });
 
-    app.port(18080).multithreaded().run();
+    CROW_ROUTE(app, "/teacher/lessons").methods("POST"_method)([&db](const crow::request& req){
+        auto x = crow::json::load(req.body);
+        if (!x) return crow::response(400, "Invalid JSON");
+        
+        try {
+            int course_id = x["course_id"].i();
+            int group_id = x["group_id"].i();
+            std::string date = x["lesson_date"].s();
+            std::string hw = x["homework"].s();
+
+            pqxx::work txn(db.getConn());
+            txn.exec_prepared("create_lesson", course_id, group_id, date, hw);
+            txn.commit();
+            
+            return crow::response(200, "Lesson created");
+        } catch (const std::exception& e) {
+            crow::json::wvalue error;
+            error["error"] = e.what();
+            return crow::response(500, error);
+        }
+    });
+
+    CROW_ROUTE(app, "/teacher/journal")([&db](const crow::request& req){
+        auto course_id_str = req.url_params.get("course_id");
+        auto group_id_str = req.url_params.get("group_id");
+    
+        if (!course_id_str || !group_id_str) 
+            return crow::response(400, "Missing course_id or group_id");
+    
+        try {
+            int course_id = std::stoi(course_id_str);
+            int group_id = std::stoi(group_id_str);
+        
+            pqxx::work txn(db.getConn()); // Открыли транзакцию ОДИН раз
+        
+            crow::json::wvalue result;
+        
+            // 1. Уроки
+            auto lessons_res = txn.exec_prepared("get_journal_lessons", course_id, group_id);
+            std::vector<crow::json::wvalue> lessons_json;
+            for (auto row : lessons_res) {
+                crow::json::wvalue l;
+                l["id"] = row["id"].as<int>();
+                l["lesson_date"] = row["lesson_date"].as<std::string>();
+                l["homework"] = row["homework"].as<std::string>();
+                lessons_json.push_back(std::move(l));
+            }
+            result["lessons"] = std::move(lessons_json);
+        
+            // 2. Студенты (ИСПРАВЛЕНИЕ: Делаем запрос здесь же, через ту же txn)
+            // Вместо db.getStudentsInGroup(group_id) пишем:
+            auto students_res = txn.exec_prepared("get_students_by_group_", group_id); 
+            // Убедитесь, что имя запроса совпадает с тем, что в queries.sql (там есть get_students_by_group и get_students_by_group_)
+            
+            std::vector<crow::json::wvalue> students_json;
+            for (auto row : students_res) {
+                crow::json::wvalue s;
+                s["id"] = row["id"].as<int>();
+                s["first_name"] = row["first_name"].as<std::string>();
+                s["last_name"] = row["last_name"].as<std::string>();
+                students_json.push_back(std::move(s));
+            }
+            result["students"] = std::move(students_json);
+        
+            // 3. Оценки
+            auto grades_res = txn.exec_prepared("get_journal_grades", course_id, group_id);
+            std::vector<crow::json::wvalue> grades_json;
+            for (auto row : grades_res) {
+                crow::json::wvalue g;
+                g["student_id"] = row["student_id"].as<int>();
+                g["lesson_id"] = row["lesson_id"].as<int>();
+                g["grade"] = row["grade"].as<std::string>();
+                grades_json.push_back(std::move(g));
+            }
+            result["grades"] = std::move(grades_json);
+        
+            txn.commit(); // Закрываем транзакцию
+            return crow::response(result);
+        
+        } catch (const std::exception& e) {
+            crow::json::wvalue error;
+            error["error"] = e.what();
+            return crow::response(500, error);
+        }
+    });
+
+
+    // Получить всю нагрузку
+    CROW_ROUTE(app, "/admin/teachers/load")([&db](){
+        try {
+            std::lock_guard<std::mutex> lock(db.getMutex()); 
+            pqxx::work txn(db.getConn());
+            auto res = txn.exec_prepared("get_all_teacher_loads");
+            std::vector<crow::json::wvalue> loads;
+            for (auto row : res) {
+                crow::json::wvalue l;
+                l["teacher_id"] = row["teacher_id"].as<int>();
+                l["course_id"] = row["course_id"].as<int>();
+                l["group_id"] = row["group_id"].as<int>();
+                l["first_name"] = row["first_name"].as<std::string>();
+                l["last_name"] = row["last_name"].as<std::string>();
+                l["course_name"] = row["course_name"].as<std::string>();
+                l["group_name"] = row["group_name"].as<std::string>();
+                loads.push_back(std::move(l));
+            }
+            return crow::response(crow::json::wvalue(loads));
+        } catch (const std::exception& e) {
+            return crow::response(500, e.what());
+        }
+    });
+
+    // Сохранить новую нагрузку
+    CROW_ROUTE(app, "/admin/teachers/load").methods("POST"_method)([&db](const crow::request& req){
+        auto x = crow::json::load(req.body);
+        pqxx::work txn(db.getConn());
+        db.addTeacherLoad(txn, x["teacher_id"].i(), x["course_id"].i(), x["group_id"].i());
+        txn.commit();
+        return crow::response(200);
+    });
+
+
+    CROW_ROUTE(app, "/admin/teachers")([&db](){
+        try {
+            std::lock_guard<std::mutex> lock(db.getMutex());
+            pqxx::work txn(db.getConn());
+            
+            // Этот запрос теперь возвращает и логин, и список групп
+            auto res = txn.exec_prepared("get_admin_teachers");
+            
+            std::vector<crow::json::wvalue> teachers;
+            for (auto row : res) {
+                crow::json::wvalue t;
+                t["id"] = row["id"].as<int>();
+                t["first_name"] = row["first_name"].as<std::string>();
+                t["last_name"] = row["last_name"].as<std::string>();
+                t["login"] = row["login"].as<std::string>();
+                
+                // Обрабатываем группы. Если групп нет, придет null -> заменим на пустую строку
+                if (row["group_names"].is_null()) {
+                    t["groups"] = "—";
+                } else {
+                    t["groups"] = row["group_names"].as<std::string>();
+                }
+                
+                teachers.push_back(std::move(t));
+            }
+            
+            return crow::json::wvalue(teachers);
+            
+        } catch (const std::exception& e) {
+            std::cerr << "Error GET /admin/teachers: " << e.what() << std::endl;
+            return crow::json::wvalue({{"error", e.what()}});
+        }
+    });
+
+    CROW_ROUTE(app, "/admin/teachers/load").methods("DELETE"_method)([&db](const crow::request& req){
+        auto t = req.url_params.get("t");
+        auto c = req.url_params.get("c");
+        auto g = req.url_params.get("g");
+        if (!t || !c || !g) return crow::response(400);
+
+        pqxx::work txn(db.getConn());
+        txn.exec_prepared("delete_teacher_load", std::stoi(t), std::stoi(c), std::stoi(g));
+        txn.commit();
+        return crow::response(200);
+    });
+
+    // GET /teacher/profile
+    CROW_ROUTE(app, "/teacher/profile").methods("GET"_method)
+    ([&db](const crow::request& req){
+        auto role = req.get_header_value("role");
+        if (role != "TEACHER") return crow::response(403);
+
+        try {
+            int user_id = std::stoi(req.get_header_value("user_id"));
+            // Этот метод уже есть в db.cpp, просто вызываем его
+            Teacher t = db.getTeacherByUserId(user_id);
+            
+            crow::json::wvalue res;
+            res["id"] = t.id;
+            res["first_name"] = t.first_name;
+            res["last_name"] = t.last_name;
+            res["login"] = t.login;
+            
+            return crow::response(200, res);
+        } catch (const std::exception& e) {
+            return crow::response(500, e.what());
+        }
+    });
+    
+    // GET /students/<id>/predict?course_id=X
+    CROW_ROUTE(app, "/students/<int>/predict").methods("GET"_method)
+    ([&db](const crow::request& req, int student_id){
+        // Простая защита: студент может смотреть только свой прогноз, 
+        // но пока оставим открытым для упрощения
+        auto cid_str = req.url_params.get("course_id");
+        if (!cid_str) return crow::response(400, "Missing course_id");
+
+        try {
+            int course_id = std::stoi(cid_str);
+            return crow::response(200, db.predictGrade(student_id, course_id));
+        } catch (const std::exception& e) {
+            return crow::response(500, e.what());
+        }
+    });
+
+    app.port(18080).multithreaded().run();   
 }
 

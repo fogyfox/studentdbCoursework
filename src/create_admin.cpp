@@ -24,7 +24,7 @@ int main() {
         );
 
         // Создаём нового
-        txn.exec_params(
+        txn.exec_prepared(
             "INSERT INTO users (login, password_hash, role) VALUES ($1, $2, $3)",
             login,
             hash,

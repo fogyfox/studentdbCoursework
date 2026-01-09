@@ -98,7 +98,8 @@ class Database {
 
 public:
     Database(const std::string &conn_str);
-
+    std::mutex& getMutex() { return db_mutex; } 
+    pqxx::connection& getConn() { return conn; }
     // Users
     User getUserByLogin(const std::string &login);
     int addUser(const User &u);
@@ -155,5 +156,8 @@ public:
     crow::json::wvalue getStudentGrades(int student_id);
     int getStudentIdByUserId(int user_id);
     crow::json::wvalue getGroupMembers(int student_id);
+    std::vector<crow::json::wvalue> getStudentsInGroup(int group_id);
+    void addTeacherLoad(pqxx::work &txn, int tid, int cid, int gid);
+    crow::json::wvalue predictGrade(int student_id, int course_id);
     crow::json::wvalue getStudentProfile(int student_id);
 };
