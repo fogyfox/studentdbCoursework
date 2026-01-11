@@ -43,29 +43,33 @@ document.addEventListener("DOMContentLoaded", async () => {
     async function renderProfile() {
         try {
             const studentId = sessionStorage.getItem("userId");
-            // Запрос идет на /students/{id}/profile (убедитесь, что такой маршрут есть в main.cpp)
             const profile = await apiFetch(`/students/${studentId}/profile`);
-
-            const container = document.getElementById("profileContainer"); // Если старый контейнер остался, можно скрыть или удалить
-
+            
             if (profile.error) {
-                document.getElementById("p_fullname").textContent = "Ошибка загрузки";
+                console.error("Ошибка профиля:", profile.error);
                 return;
             }
-
-            // Заполняем красивые поля
-            document.getElementById("p_fullname").textContent = `${profile.last_name} ${profile.first_name}`;
-            document.getElementById("p_group").textContent = profile.group_name || "Нет группы";
-            document.getElementById("p_login").textContent = profile.login || "—";
-            document.getElementById("p_id").textContent = profile.id;
-
-            // Форматируем дату, если она пришла страшная
+        
+            // Вспомогательная функция для безопасной вставки
+            const setText = (id, text) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.textContent = text;
+                } else {
+                    console.warn(`Элемент с ID '${id}' не найден в HTML!`);
+                }
+            };
+        
+            setText("p_fullname", `${profile.last_name} ${profile.first_name}`);
+            setText("p_group", profile.group_name || "Нет группы");
+            setText("p_login", profile.login || "—");
+            
             let dob = profile.dob;
-            if (dob && dob.includes("T")) dob = dob.split("T")[0]; // Убираем время, если есть
-            document.getElementById("p_dob").textContent = dob || "не указана";
-
+            if (dob && dob.length > 10) dob = dob.substring(0, 10);
+            setText("p_dob", dob || "не указана");
+        
         } catch (e) { 
-            console.error(e); 
+            console.error("Критическая ошибка renderProfile:", e); 
         }
     }
 

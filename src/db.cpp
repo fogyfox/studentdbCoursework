@@ -684,7 +684,7 @@ crow::json::wvalue Database::getStudentProfile(int student_id) {
         res["login"] = r[0]["login"].is_null() ? "—" : r[0]["login"].as<std::string>();
 
         // Дата рождения может быть NULL
-        res["dob"] = r[0]["dob"].is_null() ? "Не указана" : r[0]["dob"].as<std::string>();
+        res["dob"] = r[0]["dob"].is_null() ? "" : r[0]["dob"].as<std::string>();
 
         // Имя группы (из JOIN) будет NULL, если student.group_id ссылается на несуществующую группу или NULL
         res["group_name"] = r[0]["group_name"].is_null() ? "Нет группы" : r[0]["group_name"].as<std::string>();
