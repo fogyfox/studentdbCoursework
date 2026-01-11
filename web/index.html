@@ -3,21 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <title>Вход в систему</title>
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-<h2>Вход</h2>
+<div class="login-wrapper">
+    <div class="card login-card">
+        <h2 style="text-align: center; margin-bottom: 20px;">🎓 Grade System</h2>
+        
+        <form id="loginForm">
+            <label style="font-weight: 500; display: block; margin-bottom: 5px;">Логин</label>
+            <input type="text" id="login" placeholder="Введите логин" required>
+            
+            <label style="font-weight: 500; display: block; margin-bottom: 5px;">Пароль</label>
+            <input type="password" id="password" placeholder="Введите пароль" required>
+            
+            <button type="submit" style="width: 100%; margin-top: 10px;">Войти</button>
+        </form>
 
-<form id="loginForm">
-    <input type="text" id="login" placeholder="Логин" required><br><br>
-    <input type="password" id="password" placeholder="Пароль" required><br><br>
-    <button type="submit">Войти</button>
-</form>
+        <p id="error" style="color: var(--danger); text-align: center; margin-top: 15px; font-size: 0.9em;"></p>
+    </div>
+</div>
 
-<p id="error" style="color:red;"></p>
-
-<!-- JS-файлы -->
-<script src="js/api.js"></script>     <!-- общая функция для запросов к API -->
-<script src="js/login.js"></script>   <!-- логика входа -->
+<script src="js/api.js"></script>
+<script src="js/login.js"></script>
 </body>
 </html>

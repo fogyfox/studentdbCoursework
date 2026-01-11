@@ -136,7 +136,7 @@ public:
 
     //Teacher
     std::vector<TeacherCourse> getTeacherCourses(int teacher_id);
-    std::vector<CourseGroup> getGroupsByCourse(int course_id);
+    std::vector<CourseGroup> getTeacherGroupsForCourse(int course_id, int teacher_user_id);
     // таблица оценок
     std::vector<GradeCell> getGradeTable(int course_id, int group_id);
 

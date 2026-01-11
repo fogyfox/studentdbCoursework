@@ -2,115 +2,71 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Кабинет преподавателя</title>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; color: #333; }
-        
-        /* Стили табов (как у студента) */
-        .tab { display: none; }
-        .tab.active { display: block; }
-        button.tab-button { 
-            padding: 10px 20px; cursor: pointer; background: #f0f0f0; border: none; 
-            border-bottom: 2px solid transparent; font-size: 16px; margin-right: 5px;
-        }
-        button.tab-button.active { 
-            background: #fff; border-bottom: 2px solid #007bff; color: #007bff; font-weight: bold; 
-        }
-        button.tab-button:hover { background: #e0e0e0; }
-
-        /* Таблицы */
-        table { border-collapse: collapse; width: 100%; margin-top: 15px; font-size: 14px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-        th { background-color: #f8f9fa; font-weight: 600; }
-        
-        /* Инпуты */
-        input { padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
-        
-        /* Кнопки выбора (Чипсы) */
-        .chip {
-            display: inline-block; padding: 8px 15px; margin: 5px; 
-            border: 1px solid #ccc; border-radius: 20px; cursor: pointer; 
-            background: #fff; transition: all 0.2s; user-select: none;
-        }
-        .chip:hover { background: #f0f0f0; border-color: #bbb; }
-        .chip.active { background: #007bff; color: white; border-color: #0056b3; }
-
-        /* Редактируемая ячейка */
-        td[contenteditable="true"]:focus { background-color: #e8f0fe; outline: none; }
-        
-        /* Блок управления уроком */
-        .controls-panel {
-            background: #f9f9f9; padding: 15px; border-radius: 8px; 
-            margin-bottom: 20px; border: 1px solid #eee; display: flex; gap: 15px; align-items: center;
-        }
-    </style>
+    <title>Преподаватель</title>
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <h2>Кабинет преподавателя</h2>
-    <button onclick="logout()" style="background: #dc3545; color: white; border: none; padding: 5px 15px; cursor: pointer; border-radius: 4px;">Выйти</button>
-</div>
-
-<!-- Вкладки -->
-<div style="border-bottom: 1px solid #ccc; margin-bottom: 20px;">
-    <button class="tab-button active" data-tab="journal">Журнал</button>
-    <button class="tab-button" data-tab="profile">Профиль</button>
-</div>
-
-<!-- ========================= -->
-<!-- Вкладка: Журнал -->
-<!-- ========================= -->
-<div id="journal" class="tab active">
-    
-    <!-- Шаг 1: Курсы -->
-    <div id="courseSection">
-        <h4 style="margin: 0 0 10px 0; color: #555;">1. Выберите предмет:</h4>
-        <div id="coursesList">Загрузка...</div>
+<div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <h2>🎓 Журнал преподавателя</h2>
+        <button onclick="logout()" class="danger" style="padding: 6px 12px;">Выйти</button>
     </div>
 
-    <!-- Шаг 2: Группы -->
-    <div id="groupSection" style="display:none; margin-top: 20px; border-top: 1px dashed #ddd; padding-top: 15px;">
-        <h4 style="margin: 0 0 10px 0; color: #555;">2. Выберите группу:</h4>
-        <div id="groupsList"></div>
+    <div class="tabs-nav">
+        <button class="tab-button active" data-tab="journal">Журнал</button>
+        <button class="tab-button" data-tab="profile">Профиль</button>
     </div>
 
-    <!-- Шаг 3: Рабочая область -->
-    <div id="workspace" style="display:none; margin-top: 25px;">
-        
-        <!-- Панель добавления урока -->
-        <div class="controls-panel">
-            <b>Новый урок:</b>
-            <input type="date" id="newLessonDate">
-            <input type="text" id="newLessonHomework" placeholder="Тема урока / ДЗ" style="width: 300px;">
-            <button onclick="createLesson()" style="background: #28a745; color: white; border: none; padding: 6px 15px; cursor: pointer; border-radius: 4px;">Добавить</button>
+    <!-- Журнал -->
+    <div id="journal" class="tab active">
+        <div class="card">
+            <h4 style="color: var(--text-muted); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.05em; margin-bottom: 10px;">1. Выберите предмет</h4>
+            <div id="coursesList">Загрузка...</div>
+            
+            <div id="groupSection" style="display: none; margin-top: 20px;">
+                <h4 style="color: var(--text-muted); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.05em; margin-bottom: 10px;">2. Выберите группу</h4>
+                <div id="groupsList"></div>
+            </div>
         </div>
 
-        <h3 id="journalTitle">Журнал успеваемости</h3>
-        <div style="overflow-x: auto;">
-            <table id="gradesTable">
-                <thead></thead>
-                <tbody></tbody>
-            </table>
-        </div>
-        <p style="font-size: 0.9em; color: #666; margin-top: 10px;">* Кликните по ячейке для изменения оценки. Используйте 2-5 или Н.</p>
-    </div>
-</div>
+        <div id="workspace" style="display: none;">
+            <!-- Панель управления -->
+            <div class="card" style="display: flex; gap: 15px; align-items: flex-end; background: #f9fafb;">
+                <div style="flex: 0 0 150px;">
+                    <label style="font-size: 0.85em; font-weight: 500;">Дата урока</label>
+                    <input type="date" id="newLessonDate" style="margin-bottom: 0;">
+                </div>
+                <div style="flex: 1;">
+                    <label style="font-size: 0.85em; font-weight: 500;">Тема / ДЗ</label>
+                    <input type="text" id="newLessonHomework" placeholder="Введите тему..." style="margin-bottom: 0;">
+                </div>
+                <button onclick="createLesson()" style="height: 42px;">+ Добавить урок</button>
+            </div>
 
-<!-- ========================= -->
-<!-- Вкладка: Профиль -->
-<!-- ========================= -->
-<div id="profile" class="tab">
-    <h3>Профиль преподавателя</h3>
-    <div style="border: 1px solid #ddd; padding: 20px; border-radius: 8px; max-width: 400px; background: #f9f9f9;">
-        <p><strong>ФИО:</strong> <span id="t_name">...</span></p>
-        <p><strong>Логин:</strong> <span id="t_login">...</span></p>
-        <p><strong>ID:</strong> <span id="t_id">...</span></p>
+            <div class="card">
+                <div class="table-responsive">
+                    <table id="gradesTable">
+                        <thead></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Профиль -->
+    <div id="profile" class="tab">
+        <div class="card" style="max-width: 400px;">
+            <h3>Данные аккаунта</h3>
+            <div style="margin-bottom: 10px;"><strong>ФИО:</strong> <span id="t_name">...</span></div>
+            <div style="margin-bottom: 10px;"><strong>Логин:</strong> <span id="t_login">...</span></div>
+            <div style="color: var(--text-muted); font-size: 0.9em;">ID: <span id="t_id">...</span></div>
+        </div>
     </div>
 </div>
 
 <script src="js/api.js"></script>
 <script src="js/teacher.js"></script>
-
 </body>
 </html>

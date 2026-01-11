@@ -45,11 +45,11 @@ async function renderUsers() {
             <td>${user.role}</td>
             <td>
                 <!-- Кнопка сброса -->
-                <button onclick="resetUserPassword(${user.id}, '${user.login}')" style="background:#ffc107; color:black; margin-right:5px;">
+                <button onclick="resetUserPassword(${user.id}, '${user.login}')" style="color:white; margin-right:5px;">
                     Сброс пароля
                 </button>
                 
-                <button onclick="deleteUser(${user.id})" style="background:#dc3545; color:white;">
+                <button onclick="deleteUser(${user.id})" style="color:white;">
                     Удалить
                 </button>
             </td>
@@ -238,16 +238,14 @@ document.addEventListener("DOMContentLoaded", () => {
         const lastName = document.getElementById("newTeacherLastName").value;
         const login = document.getElementById("newTeacherLogin").value;
         const password = document.getElementById("newTeacherPassword").value;
-        const groupsInput = document.getElementById("newTeacherGroups").value;
 
-        // Превращаем строку "1, 2, 3" в массив чисел [1, 2, 3]
-        const groupIds = groupsInput ? groupsInput.split(",").map(s => s.trim()).filter(s => s) : [];
+        // Группы больше не считываем
 
         if (!firstName || !lastName || !login || !password) {
-            return alert("Заполните обязательные поля: Имя, Фамилия, Логин и Пароль");
+            return alert("Заполните все поля");
         }
 
-        await addTeacher(firstName, lastName, login, password, groupIds);
+        await addTeacher(firstName, lastName, login, password);
     });
 });
 
@@ -258,25 +256,25 @@ async function fetchTeachers() {
     return await apiFetch("/admin/teachers", { method: "GET" });
 }
 
-async function addTeacher(first_name, last_name, login, password, group_ids = []) {
+async function addTeacher(first_name, last_name, login, password) {
     const res = await apiFetch("/admin/teachers", {
         method: "POST",
         body: JSON.stringify({ 
             first_name, 
             last_name, 
             login, 
-            password, // Передаем пароль на сервер
-            group_ids: group_ids.map(Number) 
+            password
         })
     });
-    if (res.error) alert(res.error);
-    else {
-        // Очищаем поля формы после успешного добавления
+    
+    if (res.error) {
+        alert(res.error);
+    } else {
         document.getElementById("newTeacherFirstName").value = "";
         document.getElementById("newTeacherLastName").value = "";
         document.getElementById("newTeacherLogin").value = "";
         document.getElementById("newTeacherPassword").value = "";
-        document.getElementById("newTeacherGroups").value = "";
+        
         renderTeachers();
     }
 }
@@ -291,13 +289,13 @@ async function updateTeacher(id, first_name, last_name, login, group_ids) {
 }
 
 async function deleteTeacher(id) {
-    // Выполняем запрос к серверу
+    if(!confirm("Удалить преподавателя? Это также удалит его нагрузку.")) return;
+    
     const res = await apiFetch(`/admin/teachers/${id}`, { method: "DELETE" });
     
     if (res.error) {
-        alert("Ошибка: " + res.error);
+        alert(res.error);
     } else {
-        // Если все ок, перерисовываем таблицу
         renderTeachers();
     }
 }
@@ -338,7 +336,7 @@ async function renderTeachers() {
                     <td>${t.login}</td>
                     <td>${t.groups}</td> <!-- ВЫВОДИМ ГРУППЫ ЗДЕСЬ -->
                     <td>
-                        <button onclick="deleteTeacher(${t.id})" style="color:red">Удалить</button>
+                        <button onclick="deleteTeacher(${t.id})" style="color:white">Удалить</button>
                     </td>
                 </tr>
             `).join("");
@@ -359,7 +357,7 @@ async function renderTeachers() {
                     <td>${l.course_name}</td>
                     <td>${l.group_name}</td>
                     <td>
-                        <button onclick="deleteLoad(${l.teacher_id}, ${l.course_id}, ${l.group_id})" style="color:red">Удалить</button>
+                        <button onclick="deleteLoad(${l.teacher_id}, ${l.course_id}, ${l.group_id})" style="color:white">Удалить</button>
                     </td>
                 </tr>
             `).join("");
@@ -388,7 +386,7 @@ async function renderTeachers() {
                     <td>${l.last_name} ${l.first_name}</td>
                     <td>${l.course_name}</td>
                     <td>${l.group_name}</td>
-                    <td><button onclick="deleteLoad(${l.teacher_id}, ${l.course_id}, ${l.group_id})" style="color:red">Удалить</button></td>
+                    <td><button onclick="deleteLoad(${l.teacher_id}, ${l.course_id}, ${l.group_id})" style="color:white">Удалить</button></td>
                 </tr>
             `).join("");
         }
@@ -481,7 +479,7 @@ async function renderGroups() {
             <td><b>${g.name}</b></td>
             <td style="${countStyle}">${g.student_count}</td>
             <td>
-                <button onclick="deleteGroup(${g.id})" style="color: red;">Удалить</button>
+                <button onclick="deleteGroup(${g.id})" style="color: white;">Удалить</button>
             </td>
         `;
         table.appendChild(row);

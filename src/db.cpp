@@ -405,24 +405,30 @@ crow::json::wvalue Database::getGroupList(int student_id) {
 }
 
 // -------------------- Teacher Methods --------------------
-std::vector<TeacherCourse> Database::getTeacherCourses(int teacher_id) {
+std::vector<TeacherCourse> Database::getTeacherCourses(int user_id) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
-    auto r = txn.exec_prepared("get_teacher_courses", teacher_id);
-    txn.commit();
+    
+    // Используем user_id напрямую
+    auto r = txn.exec_prepared("get_teacher_courses", user_id);
+    
     std::vector<TeacherCourse> res;
-    for (auto row : r) res.push_back({row["id"].as<int>(), row["name"].as<std::string>()});
+    for (auto row : r) {
+        res.push_back({row["id"].as<int>(), row["name"].as<std::string>()});
+    }
+    txn.commit();
     return res;
 }
 
-std::vector<CourseGroup> Database::getGroupsByCourse(int course_id) {
+std::vector<CourseGroup> Database::getTeacherGroupsForCourse(int course_id, int user_id) {
+    std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
-    auto r = txn.exec_prepared("get_groups_by_course", course_id);
+    
+    auto r = txn.exec_prepared("get_teacher_groups_for_course", course_id, user_id);
     
     std::vector<CourseGroup> res;
     for (auto row : r) {
-        if (!row["id"].is_null() && !row["name"].is_null()) {
-            res.push_back({row["id"].as<int>(), row["name"].as<std::string>()});
-        }
+        res.push_back({row["id"].as<int>(), row["name"].as<std::string>()});
     }
     txn.commit();
     return res;
@@ -506,13 +512,6 @@ void Database::addTeacher(const std::string& login, const std::string& password,
         // 2. Создаем профиль в таблице teachers
         txn.exec_prepared("insert_teacher_profile", new_user_id);
 
-        // 3. ПРИВЯЗКА ГРУПП
-        for (int gid : group_ids) {
-            // ОШИБКА БЫЛА ТУТ: передаем new_user_id, так как FOREIGN KEY 
-            // в вашей базе ссылается на таблицу USERS, а не TEACHERS
-            txn.exec_prepared("insert_teacher_groups", new_user_id, gid);
-        }
-
         txn.commit();
     } catch (const std::exception &e) {
         std::cerr << "Ошибка добавления преподавателя: " << e.what() << std::endl;
@@ -524,7 +523,6 @@ void Database::updateTeacher(int id, const Teacher& t) {
     pqxx::work txn(conn);
 
     txn.exec_prepared("update_teacher_user", t.login, t.first_name, t.last_name, id);
-    txn.exec_prepared("delete_teacher_groups", id);
 
     for (int gid : t.group_ids)
         txn.exec_prepared("insert_teacher_group", id, gid);

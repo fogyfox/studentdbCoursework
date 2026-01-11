@@ -145,37 +145,44 @@ INSERT INTO teachers (user_id) VALUES ($1) RETURNING id
 -- name: insert_teacher_group
 INSERT INTO teacher_groups (teacher_id, group_id) VALUES ($1, $2)
 
--- name: delete_teacher_groups
-DELETE FROM teacher_groups WHERE teacher_id=$1
-
 -- name: get_teacher_by_user_id
 SELECT id, first_name, last_name FROM users WHERE id = $1 AND role = 'TEACHER'
-
--- name: get_teacher_groups_list
-SELECT g.id, g.name FROM teacher_groups tg JOIN groups g ON tg.group_id = g.id WHERE tg.teacher_id = $1
 
 -- name: insert_user_teacher
 INSERT INTO users (login, password_hash, role, first_name, last_name) VALUES ($1, $2, $3, $4, $5) RETURNING id
 
--- name: insert_teacher_groups
-INSERT INTO teacher_groups (teacher_id, group_id) VALUES ($1, $2)
 
 -- name: sync_teachers
 INSERT INTO teachers (user_id) SELECT id FROM users WHERE role = 'TEACHER' ON CONFLICT DO NOTHING
 
--- name: get_admin_teachers
--- name: get_admin_teachers
-SELECT t.id, u.first_name, u.last_name, u.login, STRING_AGG(g.name, ', ') as group_names FROM teachers t JOIN users u ON t.user_id = u.id LEFT JOIN teacher_groups tg ON u.id = tg.teacher_id LEFT JOIN groups g ON tg.group_id = g.id GROUP BY t.id, u.first_name, u.last_name, u.login ORDER BY u.last_name
 
+-- name: get_admin_teachers
+SELECT u.id as id, u.first_name, u.last_name, u.login, 
+       STRING_AGG(DISTINCT g.name, ', ') as group_names
+FROM teachers t
+JOIN users u ON t.user_id = u.id
+LEFT JOIN teacher_courses tc ON u.id = tc.teacher_id
+LEFT JOIN groups g ON tc.group_id = g.id
+GROUP BY u.id, u.first_name, u.last_name, u.login
+ORDER BY u.last_name
 
 -- name: insert_teacher_profile
 INSERT INTO teachers (user_id) VALUES ($1) RETURNING id
 
 -- name: add_teacher_load
 INSERT INTO teacher_courses (teacher_id, course_id, group_id) VALUES ($1, $2, $3)
+ON CONFLICT DO NOTHING
 
 -- name: get_all_teacher_loads
-SELECT tc.teacher_id, tc.course_id, tc.group_id, u.first_name, u.last_name, c.name as course_name, g.name as group_name FROM teacher_courses tc JOIN teachers t ON tc.teacher_id = t.id JOIN users u ON t.user_id = u.id JOIN courses c ON tc.course_id = c.id JOIN groups g ON tc.group_id = g.id ORDER BY u.last_name, c.name
+SELECT tc.teacher_id, tc.course_id, tc.group_id, 
+       u.first_name, u.last_name, 
+       c.name as course_name, 
+       g.name as group_name 
+FROM teacher_courses tc 
+JOIN users u ON tc.teacher_id = u.id 
+JOIN courses c ON tc.course_id = c.id 
+JOIN groups g ON tc.group_id = g.id 
+ORDER BY u.last_name, c.name
 
 -- name: delete_teacher_load
 DELETE FROM teacher_courses WHERE teacher_id = $1 AND course_id = $2 AND group_id = $3
@@ -184,7 +191,18 @@ DELETE FROM teacher_courses WHERE teacher_id = $1 AND course_id = $2 AND group_i
 INSERT INTO teacher_groups (teacher_id, group_id) VALUES ($1, $2)
 
 -- name: get_teacher_courses
-SELECT c.id, c.name FROM teacher_courses tc JOIN courses c ON c.id = tc.course_id WHERE tc.teacher_id = $1
+SELECT DISTINCT c.id, c.name 
+FROM teacher_courses tc 
+JOIN courses c ON tc.course_id = c.id 
+WHERE tc.teacher_id = $1 
+ORDER BY c.name
+
+-- name: get_teacher_groups_for_course
+SELECT g.id, g.name 
+FROM teacher_courses tc 
+JOIN groups g ON tc.group_id = g.id 
+WHERE tc.course_id = $1 AND tc.teacher_id = $2
+ORDER BY g.name
 
 -- name: get_groups_by_course
 SELECT DISTINCT g.id, g.name FROM lessons l JOIN groups g ON g.id = l.group_id WHERE l.course_id = $1

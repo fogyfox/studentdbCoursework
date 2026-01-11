@@ -479,37 +479,24 @@ int main() {
     // GET /teacher/courses
     CROW_ROUTE(app, "/teacher/courses").methods("GET"_method)
     ([&db](const crow::request& req){
-        if (req.get_header_value("role") != "TEACHER")
-            return crow::response(403, "Access denied");
+        if (req.get_header_value("role") != "TEACHER") return crow::response(403);
 
-        int user_id = 0;
         try {
-            std::string id_str = req.get_header_value("user_id");
-            if (id_str.empty())
-                return crow::response(400, "user_id header missing");
-            user_id = std::stoi(id_str);
-        } catch (...) {
-            return crow::response(400, "Invalid user_id");
+            // Берем ID пользователя из сессии
+            int user_id = std::stoi(req.get_header_value("user_id"));
+            
+            // Сразу передаем его в метод (без поиска teacher_profile)
+            auto courses = db.getTeacherCourses(user_id);
+
+            crow::json::wvalue res;
+            for (size_t i = 0; i < courses.size(); ++i) {
+                res[i]["id"] = courses[i].course_id;
+                res[i]["name"] = courses[i].course_name;
+            }
+            return crow::response(200, res);
+        } catch (const std::exception& e) {
+            return crow::response(500, e.what());
         }
-
-        int teacher_id = 0;
-        try {
-            // Найти teacher_id по user_id
-            auto t = db.getTeacherByUserId(user_id); // нужно реализовать метод в db.cpp
-            teacher_id = t.id;
-        } catch (...) {
-            return crow::response(400, "Teacher profile not found");
-        }
-
-        auto courses = db.getTeacherCourses(teacher_id);
-        crow::json::wvalue res;
-
-        for (size_t i = 0; i < courses.size(); ++i) {
-            res[i]["id"] = courses[i].course_id;
-            res[i]["name"] = courses[i].course_name;
-        }
-
-        return crow::response(res);
     });
 
     // CROW_ROUTE(app, "/teacher/<int>/courses").methods("GET"_method)
@@ -531,17 +518,23 @@ int main() {
     // GET /teacher/courses/<course_id>/groups
     CROW_ROUTE(app, "/teacher/courses/<int>/groups").methods("GET"_method)
     ([&db](const crow::request& req, int course_id){
-        if (req.get_header_value("role") != "TEACHER")
-            return crow::response(403);
-
-        auto groups = db.getGroupsByCourse(course_id);
-        crow::json::wvalue res;
-
-        for (size_t i = 0; i < groups.size(); ++i) {
-            res[i]["id"] = groups[i].group_id;
-            res[i]["name"] = groups[i].group_name;
+        if (req.get_header_value("role") != "TEACHER") return crow::response(403);
+        
+        try {
+            int user_id = std::stoi(req.get_header_value("user_id"));
+            
+            // Передаем и курс, и учителя
+            auto groups = db.getTeacherGroupsForCourse(course_id, user_id);
+            
+            crow::json::wvalue res;
+            for (size_t i = 0; i < groups.size(); ++i) {
+                res[i]["id"] = groups[i].group_id;
+                res[i]["name"] = groups[i].group_name;
+            }
+            return crow::response(200, res);
+        } catch (const std::exception& e) {
+            return crow::response(500, e.what());
         }
-        return crow::response(res);
     });
 
     CROW_ROUTE(app, "/teacher/courses/<int>/groups/<int>/grades")
@@ -672,11 +665,16 @@ int main() {
     // DELETE /admin/teachers/<id>
     CROW_ROUTE(app, "/admin/teachers/<int>").methods("DELETE"_method)([&db](int id){
         try {
-            db.deleteTeacher(id);
-            // ВАЖНО: возвращаем JSON-объект в кавычках
+            std::lock_guard<std::mutex> lock(db.getMutex());
+            pqxx::work txn(db.getConn());
+            
+            txn.exec_prepared("delete_user", id);
+            
+            txn.commit();
+            
+            // Возвращаем корректный JSON
             return crow::response(200, "{\"status\":\"success\"}"); 
         } catch (const std::exception& e) {
-            // ВАЖНО: ошибка тоже должна быть в JSON, если apiFetch её парсит
             crow::json::wvalue error_res;
             error_res["error"] = e.what();
             return crow::response(500, error_res);
@@ -829,9 +827,11 @@ int main() {
     // Получить всю нагрузку
     CROW_ROUTE(app, "/admin/teachers/load")([&db](){
         try {
-            std::lock_guard<std::mutex> lock(db.getMutex()); 
+            std::lock_guard<std::mutex> lock(db.getMutex());
             pqxx::work txn(db.getConn());
+            
             auto res = txn.exec_prepared("get_all_teacher_loads");
+            
             std::vector<crow::json::wvalue> loads;
             for (auto row : res) {
                 crow::json::wvalue l;
@@ -844,19 +844,43 @@ int main() {
                 l["group_name"] = row["group_name"].as<std::string>();
                 loads.push_back(std::move(l));
             }
-            return crow::response(crow::json::wvalue(loads));
+            
+            return crow::response(200, crow::json::wvalue(loads)); 
+
         } catch (const std::exception& e) {
             return crow::response(500, e.what());
         }
     });
 
     // Сохранить новую нагрузку
-    CROW_ROUTE(app, "/admin/teachers/load").methods("POST"_method)([&db](const crow::request& req){
+    CROW_ROUTE(app, "/admin/teachers/load").methods("POST"_method)
+    ([&db](const crow::request& req){
         auto x = crow::json::load(req.body);
-        pqxx::work txn(db.getConn());
-        db.addTeacherLoad(txn, x["teacher_id"].i(), x["course_id"].i(), x["group_id"].i());
-        txn.commit();
-        return crow::response(200);
+        if (!x) return crow::response(400, "Invalid JSON");
+
+        try {
+            // 1. БЛОКИРОВКА (Обязательно!)
+            std::lock_guard<std::mutex> lock(db.getMutex());
+            
+            // 2. Открываем транзакцию
+            pqxx::work txn(db.getConn());
+
+            // 3. Вызываем метод добавления
+            // Убедитесь, что передаете параметры как integer
+            db.addTeacherLoad(txn, x["teacher_id"].i(), x["course_id"].i(), x["group_id"].i());
+
+            txn.commit();
+            return crow::response(200);
+            
+        } catch (const std::exception& e) {
+            // Логируем ошибку, чтобы видеть её в терминале
+            std::cerr << "Error adding load: " << e.what() << std::endl;
+            
+            // Возвращаем понятную ошибку клиенту
+            crow::json::wvalue error;
+            error["error"] = std::string("Database error: ") + e.what();
+            return crow::response(500, error);
+        }
     });
 
 
@@ -943,6 +967,12 @@ int main() {
         } catch (const std::exception& e) {
             return crow::response(500, e.what());
         }
+    });
+
+    CROW_ROUTE(app, "/css/style.css")([](){
+        crow::response res = serveFile("css/style.css");
+        res.set_header("Content-Type", "text/css");
+        return res;
     });
 
     app.port(18080).multithreaded().run();   

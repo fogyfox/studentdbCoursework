@@ -22,13 +22,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function checkAuth() {
     if (sessionStorage.getItem("role") !== "TEACHER") {
-        window.location.href = "index.html";
+        window.location.href = "/";
     }
 }
 
 function logout() {
     sessionStorage.clear();
-    window.location.href = "index.html";
+    window.location.href = "/";
 }
 
 // === ЛОГИКА ЖУРНАЛА ===

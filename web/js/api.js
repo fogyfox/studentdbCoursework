@@ -8,9 +8,43 @@ async function apiFetch(url, opts = {}) {
         "role": role,
         "user_id": userId
     };
-    const res = await fetch(url, opts);
-    return res.json();
+
+    try {
+        const res = await fetch(url, opts);
+        
+        // 1. Сначала читаем текст ответа
+        const text = await res.text();
+        
+        // 2. Если ответ не OK (4xx, 500), пробуем распарсить ошибку или вернуть текст
+        if (!res.ok) {
+            try {
+                const jsonErr = JSON.parse(text);
+                return { error: jsonErr.error || jsonErr.message || `Ошибка ${res.status}` };
+            } catch (e) {
+                return { error: text || `Ошибка ${res.status}` };
+            }
+        }
+
+        // 3. Если ответ пустой (например, после DELETE), возвращаем успех
+        if (!text) {
+            return { status: "success" };
+        }
+
+        // 4. Пробуем распарсить JSON
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            // Если сервер вернул не JSON (например "Lesson created"), заворачиваем в объект
+            console.warn("Server returned non-JSON response:", text);
+            return { status: "success", message: text };
+        }
+
+    } catch (err) {
+        console.error("Network error:", err);
+        return { error: "Ошибка сети или сервера" };
+    }
 }
+
 
 
 // =====================

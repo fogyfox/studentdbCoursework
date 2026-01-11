@@ -1,121 +1,96 @@
-
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Личный кабинет студента</title>
-    <style>
-        .tab { display: none; }
-        .tab.active { display: block; }
-        button.tab-button { margin-right: 5px; margin-bottom: 10px; }
-        table { border-collapse: collapse; width: 80%; margin-bottom: 20px; }
-        th, td { border: 1px solid black; padding: 5px; text-align: left; }
-        .grade-item {
-            cursor: help;
-            border-bottom: 1px dotted #666;
-            padding: 2px 5px;
-            display: inline-block;
-        }
-        .grade-item:hover {
-            background-color: #f0f0f0;
-        }
-    </style>
+    <title>Личный кабинет</title>
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-<h2>Личный кабинет студента</h2>
+<div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+        <h2>👋 Кабинет студента</h2>
+        <button onclick="location.href='/'; sessionStorage.clear();" class="danger" style="padding: 6px 12px;">Выйти</button>
+    </div>
 
-<!-- Кнопки вкладок -->
-<div>
-    <button class="tab-button" data-tab="grades">Оценки</button>
-    <button class="tab-button" data-tab="profile">Профиль</button>
-    <button class="tab-button" data-tab="group">Группа</button>
-    <button class="tab-button" data-tab="password">Сброс пароля</button>
-</div>
+    <!-- Навигация -->
+    <div class="tabs-nav">
+        <button class="tab-button active" data-tab="grades">Оценки</button>
+        <button class="tab-button" data-tab="profile">Профиль</button>
+        <button class="tab-button" data-tab="group">Моя группа</button>
+        <button class="tab-button" data-tab="password">Безопасность</button>
+    </div>
 
-<!-- Вкладка: Оценки -->
-<div id="grades" class="tab active">
-    <h3>Оценки</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>Предмет</th>
-                <th>Оценки (наведите для просмотра даты)</th>
-                <th>Прогноз </th>
-            </tr>
-        </thead>
-        <tbody id="gradesTable"></tbody>
-    </table>
-</div>
-
-<!-- Вкладка: Профиль -->
-<div id="profile" class="tab">
-    <h3>Карточка студента</h3>
-    
-    <div class="profile-card" style="border: 1px solid #ddd; padding: 20px; border-radius: 8px; max-width: 500px; background: #f9f9f9; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-        <div style="display: flex; align-items: center; margin-bottom: 20px;">
-            <!-- Иконка/Аватарка-заглушка -->
-            <div style="width: 60px; height: 60px; background: #007bff; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; margin-right: 15px;">
-                🎓
-            </div>
-            <div>
-                <h2 id="p_fullname" style="margin: 0;">Загрузка...</h2>
-                <span id="p_role" style="color: #666; font-size: 0.9em;">Студент</span>
+    <!-- Вкладка Оценки -->
+    <div id="grades" class="tab active">
+        <div class="card">
+            <h3>📈 Успеваемость</h3>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Предмет</th>
+                            <th>Оценки</th>
+                            <th>Прогноз</th>
+                        </tr>
+                    </thead>
+                    <tbody id="gradesTable"></tbody>
+                </table>
             </div>
         </div>
-
-        <table style="width: 100%; border: none;">
-            <tr>
-                <td style="border: none; padding: 8px 0; color: #555; width: 120px;">Группа:</td>
-                <td style="border: none; padding: 8px 0; font-weight: bold;" id="p_group">—</td>
-            </tr>
-            <tr>
-                <td style="border: none; padding: 8px 0; color: #555;">Логин:</td>
-                <td style="border: none; padding: 8px 0;" id="p_login">—</td>
-            </tr>
-            <tr>
-                <td style="border: none; padding: 8px 0; color: #555;">ID Студента:</td>
-                <td style="border: none; padding: 8px 0;" id="p_id">—</td>
-            </tr>
-            <tr>
-                <td style="border: none; padding: 8px 0; color: #555;">Дата рождения:</td>
-                <td style="border: none; padding: 8px 0;" id="p_dob">—</td>
-            </tr>
-        </table>
     </div>
-</div>
 
+    <!-- Вкладка Профиль -->
+    <div id="profile" class="tab">
+        <div class="card" style="max-width: 500px;">
+            <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px;">
+                <div style="width: 60px; height: 60px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px;">🎓</div>
+                <div>
+                    <h3 id="p_fullname" style="margin: 0;">Загрузка...</h3>
+                    <span style="color: var(--text-muted);">Студент</span>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px;">
+                <div style="color: var(--text-muted);">Группа:</div> <div id="p_group" style="font-weight: 500;">—</div>
+                <div style="color: var(--text-muted);">Логин:</div> <div id="p_login">—</div>
+                <div style="color: var(--text-muted);">Дата рожд.:</div> <div id="p_dob">—</div>
+            </div>
+        </div>
+    </div>
 
-
-<!-- Вкладка: Группа -->
-<div id="group" class="tab">
-    <h3>Ваша группа</h3>
-    <table id="groupTable">
-        <thead>
-            <tr>
-                <th>Студент</th>
-                <th>Средний балл</th>
-            </tr>
-        </thead>
-        <tbody id="groupTableBody"></tbody> 
-    </table>
-</div>
-
-<!-- Вкладка: Сброс пароля -->
-<div id="password" class="tab">
-    <h3>Сменить пароль</h3>
-    <form id="resetPasswordForm">
-        <input type="password" id="oldPassword" placeholder="Старый пароль" required><br><br>
-        <input type="password" id="newPassword" placeholder="Новый пароль" required><br><br>
-        <button type="submit">Сменить пароль</button>
-    </form>
-    <p id="passwordMessage" style="color:green"></p>
-    <p id="passwordError" style="color:red"></p>
+    <!-- Вкладка Группа -->
+    <div id="group" class="tab">
+        <div class="card">
+            <h3>👥 Одногруппники</h3>
+            <div class="table-responsive">
+                <table id="groupTable">
+                    <thead>
+                        <tr>
+                            <th>Студент</th>
+                            <th>Средний балл</th>
+                        </tr>
+                    </thead>
+                    <tbody id="groupTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Вкладка Пароль -->
+    <div id="password" class="tab">
+        <div class="card" style="max-width: 400px;">
+            <h3>Смена пароля</h3>
+            <form id="resetPasswordForm">
+                <input type="password" id="oldPassword" placeholder="Текущий пароль" hidden> <!-- Часто не требуют старый для простоты, или оставьте -->
+                <label>Новый пароль</label>
+                <input type="password" id="newPassword" required>
+                <button type="submit">Сохранить</button>
+            </form>
+        </div>
+    </div>
 </div>
 
 <script src="js/api.js"></script>
 <script src="js/student.js"></script>
-
 </body>
 </html>
