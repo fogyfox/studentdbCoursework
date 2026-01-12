@@ -5,22 +5,20 @@ services:
     image: postgres:15
     container_name: students_db
     environment:
-      POSTGRES_USER: admin      # Убедитесь, что это совпадает с вашим main.cpp
-      POSTGRES_PASSWORD: admin  # Убедитесь, что это совпадает с вашим main.cpp
+      POSTGRES_USER: admin     
+      POSTGRES_PASSWORD: admin 
       POSTGRES_DB: students_db
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     
-    # --- ДОБАВИТЬ ЭТОТ БЛОК ---
     healthcheck:
       # Проверяем, готова ли БД принимать подключения
       test: ["CMD-SHELL", "pg_isready -U admin -d students_db"]
       interval: 5s
       timeout: 5s
       retries: 10
-    # --------------------------
 
   app:
     build: .
@@ -28,11 +26,9 @@ services:
     ports:
       - "18080:18080"
     
-    # --- ИЗМЕНИТЬ ЭТОТ БЛОК ---
     depends_on:
       db:
         condition: service_healthy # Ждать, пока healthcheck не скажет "OK"
-    # --------------------------
     
     restart: on-failure # Если все-таки упадет, попробовать снова
 

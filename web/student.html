@@ -46,13 +46,11 @@
             <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 20px;">
                 <div style="width: 60px; height: 60px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px;">🎓</div>
                 <div>
-                    <!-- ПРОВЕРЬТЕ ЭТОТ ID -->
                     <h3 id="p_fullname" style="margin: 0;">Загрузка...</h3>
                     <span style="color: var(--text-muted);">Студент</span>
                 </div>
             </div>
             <div style="display: grid; grid-template-columns: 120px 1fr; gap: 10px;">
-                <!-- ПРОВЕРЬТЕ ЭТИ ID -->
                 <div style="color: var(--text-muted);">Группа:</div> <div id="p_group" style="font-weight: 500;">—</div>
                 <div style="color: var(--text-muted);">Логин:</div> <div id="p_login">—</div>
                 <div style="color: var(--text-muted);">Дата рожд.:</div> <div id="p_dob">—</div>
@@ -83,7 +81,7 @@
         <div class="card" style="max-width: 400px;">
             <h3>Смена пароля</h3>
             <form id="resetPasswordForm">
-                <input type="password" id="oldPassword" placeholder="Текущий пароль" hidden> <!-- Часто не требуют старый для простоты, или оставьте -->
+                <input type="password" id="oldPassword" placeholder="Текущий пароль" hidden>
                 <label>Новый пароль</label>
                 <input type="password" id="newPassword" required>
                 <button type="submit">Сохранить</button>

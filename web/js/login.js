@@ -18,7 +18,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (res.status === "success") {
             sessionStorage.setItem("role", res.role);
-            console.log(res); // посмотрим, какое поле с ID возвращает сервер
+            console.log(res); 
             sessionStorage.setItem("userId", res.id ?? res.user_id ?? res.userId);
 
             if (res.role === "STUDENT") location.href = "student.html";

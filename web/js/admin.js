@@ -162,16 +162,15 @@ async function updateStudent(id, first_name, last_name, dob, group_id) {
 }
 
 
-// =====================
+
 // Редактирование пользователей
-// =====================
 function editUser(id, login, role) {
     const newLogin = prompt("Логин:", login);
     const newRole = prompt("Роль (STUDENT/TEACHER/ADMIN):", role);
     if (newLogin && newRole) updateUser(id, newLogin, "", newRole);
 }
 
-// исправляем editStudent
+
 function editStudent(id, first_name, last_name, dob, group_id) {
     const newFirstName = prompt("Имя:", first_name);
     const newLastName = prompt("Фамилия:", last_name);
@@ -182,9 +181,8 @@ function editStudent(id, first_name, last_name, dob, group_id) {
     }
 }
 
-// =====================
+
 // Инициализация
-// =====================
 document.addEventListener("DOMContentLoaded", () => {
     renderUsers();
     renderCourses();
@@ -207,7 +205,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const name = document.getElementById("newSubjectName").value;
         if (!name) return alert("Введите название предмета");
 
-        // В C++ prepare "insert_course" ожидает один параметр ($1)
         const res = await apiFetch("/admin/courses", {
             method: "POST",
             body: JSON.stringify({ name: name })
@@ -239,8 +236,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const login = document.getElementById("newTeacherLogin").value;
         const password = document.getElementById("newTeacherPassword").value;
 
-        // Группы больше не считываем
-
         if (!firstName || !lastName || !login || !password) {
             return alert("Заполните все поля");
         }
@@ -249,9 +244,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
-// =====================
+
 // Редактирование преподавателей
-// =====================
 async function fetchTeachers() {
     return await apiFetch("/admin/teachers", { method: "GET" });
 }
@@ -323,8 +317,7 @@ async function renderTeachers() {
             apiFetch("/admin/teachers/load")
         ]);
 
-        // 1. Заполняем главную таблицу преподавателей
-        // 1. Таблица списка преподавателей
+        // Таблица списка преподавателей
         const listTable = document.getElementById("teachersListTable"); 
         
         if (listTable && teachers && !teachers.error) {
@@ -342,11 +335,9 @@ async function renderTeachers() {
             `).join("");
         }
 
-        // 2. Таблица нагрузки (нижняя)
-        // Если она не отображается, проверьте ID "teachersLoadTable" в HTML
+        // Таблица нагрузки
         const loadTableBody = document.getElementById("teachersLoadList");
         
-        // Логирование для проверки (посмотрите в консоль браузера F12)
         console.log("Таблица нагрузки найдена?", !!loadTableBody);
         console.log("Данные нагрузки:", loads);
 
@@ -363,7 +354,7 @@ async function renderTeachers() {
             `).join("");
         }
 
-        // 2. Наполняем селекторы (без изменений)
+        // Наполняем селекторы 
         const tSelect = document.getElementById("loadTeacherSelect");
         const cSelect = document.getElementById("loadCourseSelect");
         const gSelect = document.getElementById("loadGroupSelect");
@@ -378,7 +369,7 @@ async function renderTeachers() {
             gSelect.innerHTML = groups.map(g => `<option value="${g.id}">${g.name}</option>`).join("");
         }
 
-        // 3. Таблица нагрузки (без изменений)
+        // Таблица нагрузки 
         const loadTable = document.querySelector("#teachersLoadTable tbody");
         if (loads && loadTable) {
             loadTable.innerHTML = loads.map(l => `
@@ -487,7 +478,7 @@ async function renderGroups() {
 }
 
 
-// В блок инициализации (DOMContentLoaded)
+// В блок инициализации
 document.getElementById("addGroupBtn")?.addEventListener("click", async () => {
     const name = document.getElementById("newGroupName").value;
     if (!name) return alert("Введите название группы");
@@ -558,7 +549,7 @@ async function createAndReloadTeacher() {
         alert("Преподаватель успешно создан!");
         // Очистка полей
         ["t_first", "t_last", "t_login", "t_pass"].forEach(id => document.getElementById(id).value = "");
-        // ГЛАВНОЕ: Перерисовываем всю вкладку, чтобы новый учитель появился в списках
+        // Перерисовываем всю вкладку, чтобы новый учитель появился в списках
         await renderTeachers(); 
     } else {
         alert("Ошибка при создании: " + res.error);

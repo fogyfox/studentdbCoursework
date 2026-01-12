@@ -5,6 +5,7 @@
 #include <mutex>
 #include <crow.h>
 
+// пользователь
 struct User {
     int id;
     std::string login;
@@ -14,6 +15,7 @@ struct User {
     std::string last_name;
 };
 
+// студент
 struct Student {
     int id;
     int user_id;
@@ -24,6 +26,7 @@ struct Student {
     int group_id;
 };
 
+// учитель
 struct Teacher {
     int id;
     int user_id;
@@ -31,14 +34,16 @@ struct Teacher {
     std::string last_name;
     std::string login;
     std::vector<int> group_ids;
-    std::vector<std::string> group_names; // для фронтенда
+    std::vector<std::string> group_names;
 };
 
+// предмет
 struct Course {
     int id;
     std::string name;
 };
 
+// оценка
 struct Grade {
     int student_id;
     int course_id;
@@ -47,11 +52,13 @@ struct Grade {
     std::string lesson_date;
 };
 
+// группа
 struct Group {
     int id;
     std::string name;
 };
 
+// рейтинг студента
 struct StudentRating {
     int student_id;
     std::string first_name;
@@ -71,17 +78,17 @@ struct CourseGroup {
     std::string group_name;
 };
 
+// занитие
 struct Lesson {
     int id;
     std::string lesson_date;
 };
 
+// Вес оценки
 struct GradeEntry {
     std::string lesson_date;
     int grade;
 };
-
-
 
 // строка таблицы оценок
 struct GradeCell {
@@ -107,7 +114,6 @@ public:
     void deleteUser(int id);
     void updateUser(int id, const User &u);
     void updateUserPassword(int id, const std::string &new_hash);
-
     // Students
     void addStudent(const Student &s, std::string login, std::string password);
     std::vector<Student> getAllStudents();
@@ -116,38 +122,31 @@ public:
     void updateStudent(int id, const Student &s);
     Student getStudentByUserId(int user_id);
     void updatePasswordByStudentId(int student_id, const std::string& new_hash);
-
     // Courses
     void addCourse(const Course &c);
     std::vector<Course> getAllCourses();
     void deleteCourse(int id);
     void updateCourse(int id, const Course &c);
-
     // Grades
     void addGrade(const Grade &g);
     std::vector<Grade> getGradesByStudent(int student_id);
     crow::json::wvalue getGroupRating(int student_id);
-
     crow::json::wvalue getGroupList(int student_id);
-
     // Groups
     void addGroup(const Group &g);
     std::vector<Group> getAllGroups();
     Group getGroupById(int id);
-
     //Teacher
     std::vector<TeacherCourse> getTeacherCourses(int teacher_id);
     std::vector<CourseGroup> getTeacherGroupsForCourse(int course_id, int teacher_user_id);
     // таблица оценок
     std::vector<GradeCell> getGradeTable(int course_id, int group_id);
-
     std::vector<Teacher> getAllTeachers();
     void addTeacher(const std::string &login, const std::string &password, const std::string &first_name, const std::string &last_name, const std::vector<int> &group_ids);
-    
     void updateTeacher(int id, const Teacher& t);
     void deleteTeacher(int id);
     Teacher getTeacherByUserId(int user_id);
-
+    //Доп
     std::vector<Lesson> getLessons(int course_id, int group_id);
     void setGrade(int student_id, int course_id, const std::string &lesson_date, const std::string &grade);
     std::vector<GradeEntry> getGradesByStudentAndCourse(int student_id, int course_id);

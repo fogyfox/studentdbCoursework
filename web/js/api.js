@@ -12,10 +12,10 @@ async function apiFetch(url, opts = {}) {
     try {
         const res = await fetch(url, opts);
         
-        // 1. Сначала читаем текст ответа
+        // Сначала читаем текст ответа
         const text = await res.text();
         
-        // 2. Если ответ не OK (4xx, 500), пробуем распарсить ошибку или вернуть текст
+        // Если ответ не OK (4xx, 500), пробуем распарсить ошибку или вернуть текст
         if (!res.ok) {
             try {
                 const jsonErr = JSON.parse(text);
@@ -25,12 +25,12 @@ async function apiFetch(url, opts = {}) {
             }
         }
 
-        // 3. Если ответ пустой (например, после DELETE), возвращаем успех
+        // Если ответ пустой (например, после DELETE), возвращаем успех
         if (!text) {
             return { status: "success" };
         }
 
-        // 4. Пробуем распарсить JSON
+        // Пробуем распарсить JSON
         try {
             return JSON.parse(text);
         } catch (e) {
@@ -47,9 +47,8 @@ async function apiFetch(url, opts = {}) {
 
 
 
-// =====================
-// Пользователи (для админа)
-// =====================
+
+// Пользователи 
 async function fetchUsers() {
     return await apiFetch("/admin/users", { method: "GET" });
 }
@@ -63,9 +62,8 @@ async function updateUserProfile(id, profile) {
     return await apiFetch(`/admin/users/${id}/profile`, { method: "PUT", body: JSON.stringify(profile) });
 }
 
-// =====================
+
 // Группы (только админ)
-// =====================
 async function fetchGroups() {
     return await apiFetch("/admin/groups", { method: "GET" });
 }
@@ -78,9 +76,8 @@ async function deleteGroup(id) {
     return await apiFetch(`/admin/groups/${id}`, { method: "DELETE" });
 }
 
-// =====================
+
 // Профиль текущего пользователя
-// =====================
 async function fetchProfile(userId) {
     return await apiFetch(`/users/profile`, { method: "GET" });
 }

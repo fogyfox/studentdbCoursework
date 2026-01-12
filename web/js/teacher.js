@@ -31,8 +31,7 @@ function logout() {
     window.location.href = "/";
 }
 
-// === ЛОГИКА ЖУРНАЛА ===
-
+// Журнал
 async function loadCourses() {
     const teacherId = sessionStorage.getItem("userId");
     const courses = await apiFetch(`/teacher/courses`);
@@ -116,7 +115,7 @@ async function loadJournal() {
     const { lessons, students, grades } = data;
     const thead = document.querySelector("#gradesTable thead");
     const tbody = document.querySelector("#gradesTable tbody");
-    thead.innerHTML = ""; // <--- Очищаем шапку
+    thead.innerHTML = ""; // Очищаем шапку
     tbody.innerHTML = "";
     
     // Заголовок таблицы (Даты уроков)
@@ -186,11 +185,11 @@ async function saveGrade(cell) {
     }
 }
 
-// === ПРОФИЛЬ ===
+// Профиль
 async function loadProfile() {
     const id = sessionStorage.getItem("userId");
     try {
-        const p = await apiFetch(`/teacher/profile`); // Этот маршрут нужно добавить в main.cpp
+        const p = await apiFetch(`/teacher/profile`);
         if (p.error) throw new Error(p.error);
         
         document.getElementById("t_name").textContent = `${p.last_name} ${p.first_name}`;

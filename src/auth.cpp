@@ -3,13 +3,7 @@
 #include <algorithm>
 #include <cctype>
 
-// Проверка пароля: использует функцию checkPassword из crypto.h
-// bool checkPassword(const std::string &password, const std::string &storedHash) {
-//     // используем функцию из crypto.cpp
-//     return ::checkPassword(password, storedHash);
-// }
-
-// Проверка роли: простое сравнение (можно сделать более гибким, с иерархией ролей)
+// Проверка роли: простое сравнение
 bool checkRole(const std::string &userRole, const std::string &requiredRole) {
     // Приведём роли к верхнему регистру для сравнения
     std::string uRole = userRole;

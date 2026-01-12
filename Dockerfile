@@ -1,8 +1,6 @@
-# 1. Базовый образ
 FROM debian:bookworm-slim
 
 RUN sed -i 's/deb.debian.org/mirror.yandex.ru/g' /etc/apt/sources.list.d/debian.sources
-# 2. Устанавливаем зависимости
 RUN apt-get update && apt-get install -y \
     g++ \
     make \
@@ -13,20 +11,15 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. Рабочая директория
 WORKDIR /app
 
-# 4. Копируем проект
 COPY src ./src
 COPY web ./web
 COPY external ./external
 
-# 5. Сборка проекта через Makefile
 WORKDIR /app/src
 RUN make
 
-# 6. Экспонируем порт сервера
 EXPOSE 18080
 
-# 7. Запуск сервера
 CMD ["./server"]

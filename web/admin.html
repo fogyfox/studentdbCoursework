@@ -5,7 +5,6 @@
     <title>Админ-панель</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
-        /* Дополнительные стили для админки для компактности форм */
         .form-row {
             display: flex;
             gap: 10px;
@@ -14,12 +13,12 @@
             flex-wrap: wrap;
         }
         .form-row input, .form-row select {
-            margin-bottom: 0; /* Убираем отступ, так как используем flex-gap */
+            margin-bottom: 0;
             flex: 1;
             min-width: 150px;
         }
         .form-row button {
-            height: 42px; /* Выравнивание высоты с инпутами */
+            height: 42px; 
             white-space: nowrap;
         }
         .section-title {
@@ -48,9 +47,7 @@
         <button class="tab-button" data-tab="courses">Предметы</button>
     </div>
 
-    <!-- ========================= -->
     <!-- Вкладка: Пользователи -->
-    <!-- ========================= -->
     <div id="users" class="tab active">
         <div class="card">
             <h3>Список пользователей</h3>
@@ -78,16 +75,14 @@
                 <select id="newUserRole">
                     <option value="TEACHER">TEACHER</option>
                     <option value="ADMIN">ADMIN</option>
-                    <!-- Роль STUDENT скрыта, создаем через вкладку Студенты -->
                 </select>
                 <button id="addUserBtn">Создать</button>
             </div>
         </div>
     </div>
 
-    <!-- ========================= -->
+
     <!-- Вкладка: Студенты -->
-    <!-- ========================= -->
     <div id="students" class="tab">
         <div class="card">
             <h3>Студенты</h3>
@@ -121,9 +116,8 @@
         </div>
     </div>
 
-    <!-- ========================= -->
+
     <!-- Вкладка: Преподаватели -->
-    <!-- ========================= -->
     <div id="teachers" class="tab">
         <!-- Блок 1: Список и создание -->
         <div class="card">
@@ -184,15 +178,14 @@
                             <th>Действие</th>
                         </tr>
                     </thead>
-                    <tbody id="teachersLoadList"></tbody> <!-- Исправленный ID -->
+                    <tbody id="teachersLoadList"></tbody>
                 </table>
             </div>
         </div>
     </div>
 
-    <!-- ========================= -->
+
     <!-- Вкладка: Группы -->
-    <!-- ========================= -->
     <div id="groups" class="tab">
         <div class="card">
             <h3>Управление группами</h3>
@@ -218,9 +211,8 @@
         </div>
     </div>
 
-    <!-- ========================= -->
+
     <!-- Вкладка: Предметы -->
-    <!-- ========================= -->
     <div id="courses" class="tab">
         <div class="card">
             <h3>Предметы</h3>

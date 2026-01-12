@@ -5,7 +5,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
     }
 
-    // 1. Логика переключения вкладок
+    // Логика переключения вкладок
     const buttons = document.querySelectorAll('.tab-button');
     const tabs = document.querySelectorAll('.tab');
 
@@ -30,7 +30,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
     });
 
-    // 2. Функции запросов
+    // Функции запросов
     async function fetchProfile() {
         return await apiFetch(`/students/${studentId}/profile`);
     }
@@ -39,7 +39,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         return await apiFetch(`/students/${studentId}/grades`);
     }
 
-    // 3. Функции отрисовки
+    // Функции отрисовки
     async function renderProfile() {
         try {
             const studentId = sessionStorage.getItem("userId");
@@ -76,7 +76,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     async function renderGrades() {
         try {
             const studentId = sessionStorage.getItem("userId");
-            const grades = await fetchGrades(); // Возвращает JSON с course_id
+            const grades = await fetchGrades();
             const tableBody = document.getElementById("gradesTable");
             
             if (!tableBody) return;
@@ -87,20 +87,20 @@ document.addEventListener("DOMContentLoaded", async () => {
                 return;
             }
         
-            // 1. Группируем оценки по предметам
+            // Группируем оценки по предметам
             const grouped = {};
             grades.forEach(item => {
                 const name = item.course_name;
                 if (!grouped[name]) {
                     grouped[name] = { 
                         grades: [], 
-                        courseId: item.course_id // Берем ID из обновленного API
+                        courseId: item.course_id
                     }; 
                 }
                 grouped[name].grades.push(item);
             });
             
-            // 2. Рисуем строки
+            // Рисуем строки
             for (const [courseName, data] of Object.entries(grouped)) {
                 // Квадратики с оценками
                 const gradesHtml = data.grades.map(g => {
@@ -115,7 +115,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                             ${g.grade}</span>`;
                 }).join(" ");
             
-                // 3. Загружаем прогноз асинхронно
+                // Загружаем прогноз асинхронно
                 const rowId = `pred-row-${data.courseId}`;
                 
                 // Вставляем строку сразу с заглушкой "..."
@@ -143,7 +143,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                         if (res.trend === "up") { icon = "↗"; color = "green"; }
                         if (res.trend === "down") { icon = "↘"; color = "red"; }
                     
-                        // Показываем: "4.55 ↗"
                         cell.innerHTML = `<span style="color:${color}; font-size:1.1em;">${val} ${icon}</span>`;
                     })
                     .catch(e => console.error(e));
@@ -159,7 +158,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         try {
             const studentId = sessionStorage.getItem("userId");
             // Используем метод, который возвращает список одногруппников
-            // Убедитесь, что бэкенд возвращает JSON массив
             const members = await apiFetch(`/students/${studentId}/group`);
             const tableBody = document.querySelector("#groupTable tbody");
 
@@ -174,8 +172,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             members.forEach(m => {
                 const row = document.createElement("tr");
 
-                // Если у вас есть расчет среднего балла (avg_grade), выводите его, иначе прочерк
-                // toFixed(2) округлит число до сотых
                 const avg = (m.average_grade !== undefined && m.average_grade !== null) 
                             ? Number(m.average_grade).toFixed(2) 
                             : "—";
@@ -191,7 +187,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     }
 
-    // 4. Обработка формы смены пароля
+    // Обработка формы смены пароля
     const passwordForm = document.getElementById("resetPasswordForm");
     if (passwordForm) {
         passwordForm.addEventListener("submit", async (e) => {
@@ -211,7 +207,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         });
     }
 
-    // Инициализация первой вкладки (Оценки)
+    // Инициализация вкладки (Оценки)
     await renderGrades();
     await renderProfile();
 });

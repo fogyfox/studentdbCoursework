@@ -16,9 +16,7 @@ std::string trim(const std::string& str) {
 }
 
 Database::Database(const std::string &conn_str) : conn(conn_str) {
-    // --------------------------------------------------------
-    // АВТОМАТИЧЕСКАЯ ИНИЦИАЛИЗАЦИЯ СХЕМЫ (DDL)
-    // --------------------------------------------------------
+    // Инициализация таблиц
     try {
         pqxx::work txn(conn);
 
@@ -106,13 +104,11 @@ Database::Database(const std::string &conn_str) : conn(conn_str) {
     }
     catch (const std::exception& e) {
         std::cerr << "[CRITICAL] Failed to init DB schema: " << e.what() << std::endl;
-        // Не бросаем throw, чтобы сервер попытался запуститься дальше (вдруг таблицы есть)
     }
 
 
     // 1. Открываем файл с запросами
-    // Убедитесь, что файл queries.sql лежит рядом с исполняемым файлом
-    std::ifstream file("queries.sql");
+    std::ifstream file("queries.sql");// файл queries.sql должен лежать рядом с исполняемым файлом
     
     if (!file.is_open()) {
         throw std::runtime_error("FATAL ERROR: Could not open queries.sql! Make sure the file exists.");
@@ -127,25 +123,23 @@ Database::Database(const std::string &conn_str) : conn(conn_str) {
         std::string trimmed = trim(line);
         if (trimmed.empty()) continue; // пропускаем пустые строки
 
-        // Проверяем, это имя запроса? (начинается с "-- name:")
+        // Проверяем, "это имя запроса?" (начинается с "-- name:")
         if (trimmed.rfind("-- name:", 0) == 0) {
             // Если у нас уже был накоплен запрос, сохраняем его
             if (!currentName.empty() && !currentQuery.empty()) {
                 try {
                     conn.prepare(currentName, currentQuery);
-                    // std::cout << "Prepared: " << currentName << std::endl; // Для отладки
                 } catch (const std::exception& e) {
                     std::cerr << "Error preparing " << currentName << ": " << e.what() << std::endl;
                 }
             }
 
             // Начинаем новый запрос
-            // "-- name: my_query" -> (длина 8 символов)
-            currentName = trim(trimmed.substr(8));
+            currentName = trim(trimmed.substr(8));// "-- name: my_query" -> (длина 8 символов)
             currentQuery = "";
         } 
         else {
-            // Это часть SQL запроса, добавляем к строке
+            // это часть SQL запроса, добавляем к строке
             currentQuery += line + " ";
         }
     }
@@ -160,15 +154,16 @@ Database::Database(const std::string &conn_str) : conn(conn_str) {
     }
 }
 
-// -------------------- Users --------------------
+// Админ-панель
+
+// Получение пользователя по логину
 User Database::getUserByLogin(const std::string &login) {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
     auto r = txn.exec_prepared("get_user_by_login", login);
     
-    // 1. Сначала проверяем и извлекаем данные
+    // Сначала проверяем и извлекаем данные
     if (r.empty()) {
-        // Транзакция закроется (rollback) автоматически при выходе по exception
         throw std::runtime_error("User not found");
     }
 
@@ -178,15 +173,13 @@ User Database::getUserByLogin(const std::string &login) {
     u.login = r[0]["login"].as<std::string>();
     u.password_hash = r[0]["password_hash"].as<std::string>();
     u.role = r[0]["role"].as<std::string>();
-    // u.first_name = r[0]["first_name"].as<std::string>(""); // Защита от NULL
-    // u.last_name = r[0]["last_name"].as<std::string>("");
 
-    // 2. И только теперь закрываем транзакцию
     txn.commit();
 
     return u;
 }
 
+// Добавление пользователя (Админ)
 int Database::addUser(const User& u) {
     pqxx::work txn(conn);
     // Выполняем запрос и сохраняем результат
@@ -203,6 +196,7 @@ int Database::addUser(const User& u) {
     return r[0][0].as<int>();
 }
 
+// Получение всех пользователей
 std::vector<User> Database::getAllUsers() {
     std::lock_guard<std::mutex> lock(db_mutex);
     
@@ -223,18 +217,21 @@ std::vector<User> Database::getAllUsers() {
     return users;
 }
 
+// Удаление пользователя
 void Database::deleteUser(int id) {
     pqxx::work txn(conn);
     txn.exec_prepared("delete_user", id);
     txn.commit();
 }
 
+// Обновление данных пользователя
 void Database::updateUser(int id, const User &u) {
     pqxx::work txn(conn);
     txn.exec_prepared("update_user", u.login, u.password_hash, u.role, id);
     txn.commit();
 }
 
+// Обновление пароля пользователя
 void Database::updateUserPassword(int id, const std::string &new_hash) {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
@@ -245,42 +242,40 @@ void Database::updateUserPassword(int id, const std::string &new_hash) {
     txn.commit();
 }
 
-// -------------------- Students --------------------
+// Добавление студента
 void Database::addStudent(const Student &s, std::string login, std::string password) {
-    std::lock_guard<std::mutex> lock(db_mutex); // Блокировка
+    std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
 
-    // 1. Создаем юзера
+    // Создаем юзера
     auto r = txn.exec_prepared("insert_user", login, password, "STUDENT", s.first_name, s.last_name);
     int new_user_id = r[0][0].as<int>();
 
-    // 2. Создаем студента
+    // Создаем студента
     txn.exec_prepared("insert_student", new_user_id, s.dob, s.group_id);
     
-    txn.commit(); // КОММИТ ОБЯЗАТЕЛЕН
+    txn.commit();
 }
 
+// Обновление пароля в ЛК студента
 void Database::updatePasswordByStudentId(int student_id, const std::string& new_hash) {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
 
-    // Выполняем запрос, который мы добавили в queries.sql
     auto result = txn.exec_prepared("update_password_by_student_id", new_hash, student_id);
 
     txn.commit();
 
-    // (Опционально) Проверка, нашелся ли такой студент
     if (result.affected_rows() == 0) {
         throw std::runtime_error("Student not found or password not updated");
     }
 }
 
-
+// Получение всех студентов
 std::vector<Student> Database::getAllStudents() {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
 
-    // Достаем всё явно, используя алиасы u и s
     auto r = txn.exec_prepared("get_all_students");
 
     std::vector<Student> students;
@@ -302,6 +297,7 @@ std::vector<Student> Database::getAllStudents() {
     return students;
 }
 
+// Получение списка студентов группы
 std::vector<Student> Database::getStudentsByGroup(int group_id) {
     pqxx::work txn(conn);
     auto r = txn.exec_prepared("get_students_by_group", group_id);
@@ -314,7 +310,7 @@ std::vector<Student> Database::getStudentsByGroup(int group_id) {
         // Четко разделяем колонки:
         s.first_name = row["first_name"].as<std::string>("");
         s.last_name = row["last_name"].as<std::string>("");
-        s.login = row["login"].as<std::string>(""); // Достаем логин из таблицы users
+        s.login = row["login"].as<std::string>(""); 
         s.dob = row["dob"].as<std::string>("");
         s.group_id = row["group_id"].as<int>(0);
 
@@ -324,19 +320,18 @@ std::vector<Student> Database::getStudentsByGroup(int group_id) {
     return students;
 }
 
+// Удаление студента
 void Database::deleteStudent(int student_id) {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
     try {
-        // 1. Сначала узнаем user_id этого студента
-        // Запрос "get_user_id_by_student" должен быть в conn.prepare
+        // Сначала узнаем user_id этого студента
         auto r = txn.exec_prepared("get_user_id_by_student", student_id);
         
         if (!r.empty()) {
             int user_id = r[0][0].as<int>();
 
-            // 2. Удаляем самого пользователя. 
-            // Это автоматически удалит студента из-за FOREIGN KEY ... ON DELETE CASCADE
+            // Удаляем самого пользователя. 
             txn.exec_prepared("delete_user_by_id", user_id);
             txn.commit();
         }
@@ -346,15 +341,16 @@ void Database::deleteStudent(int student_id) {
     }
 }
 
-
+// Обновление информации о студенте
 void Database::updateStudent(int id, const Student &s) {
     pqxx::work txn(conn);
     txn.exec_prepared("update_student", s.first_name, s.last_name, s.dob, s.group_id, id);
     txn.commit();
 }
 
+// Получение профиля студента по ID
 Student Database::getStudentByUserId(int user_id) {
-    std::lock_guard<std::mutex> lock(db_mutex); // Не забывай про мьютекс
+    std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
     auto r = txn.exec_prepared("get_student_by_user_id", user_id); 
 
@@ -362,8 +358,6 @@ Student Database::getStudentByUserId(int user_id) {
         throw std::runtime_error("Student profile not found");
     }
 
-    // Сохраняем данные в переменные ДО коммита
-    // ВНИМАНИЕ: Проверь порядок полей в структуре Student в db.h!
     Student s;
     s.id = r[0]["id"].as<int>();
     s.user_id = r[0]["user_id"].as<int>();
@@ -377,13 +371,14 @@ Student Database::getStudentByUserId(int user_id) {
     return s;
 }
 
-// -------------------- Groups --------------------
+// Добавление группы
 void Database::addGroup(const Group &g) {
     pqxx::work txn(conn);
     txn.exec_prepared("insert_group", g.name);
     txn.commit();
 }
 
+// Получение списка групп
 std::vector<Group> Database::getAllGroups() {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
@@ -396,6 +391,7 @@ std::vector<Group> Database::getAllGroups() {
     return groups;
 }
 
+// Получение группы по ID
 Group Database::getGroupById(int id) {
     pqxx::work txn(conn);
     auto r = txn.exec_prepared("get_group_by_id", id);
@@ -403,20 +399,19 @@ Group Database::getGroupById(int id) {
     return Group{ r[0]["id"].as<int>(), r[0]["name"].as<std::string>() };
 }
 
-// -------------------- Courses --------------------
+// Добавление предмета
 void Database::addCourse(const Course &c) {
     pqxx::work txn(conn);
     txn.exec_prepared("insert_course", c.name);
     txn.commit();
 }
 
+// Получение списка предметов
 std::vector<Course> Database::getAllCourses() {
-    // 1. Добавляем блокировку, чтобы два потока не лезли в базу одновременно
     std::lock_guard<std::mutex> lock(db_mutex); 
     
     pqxx::work txn(conn);
     try {
-        // Используем подготовленный запрос
         auto r = txn.exec_prepared("get_all_courses");
         
         std::vector<Course> courses;
@@ -427,44 +422,42 @@ std::vector<Course> Database::getAllCourses() {
             });
         }
         
-        // 2. Сначала фиксируем транзакцию
         txn.commit(); 
         
-        // 3. Только потом возвращаем результат
         return courses;
         
     } catch (const std::exception& e) {
         std::cerr << "Database error in getAllCourses: " << e.what() << std::endl;
-        // Здесь txn автоматически сделает rollback при выходе из области видимости
         throw; 
     }
 }
 
+// Удаление предмета
 void Database::deleteCourse(int id) {
     pqxx::work txn(conn);
     txn.exec_prepared("delete_course", id);
     txn.commit();
 }
 
+// Обновление информации о предмете
 void Database::updateCourse(int id, const Course &c) {
     pqxx::work txn(conn);
     txn.exec_prepared("update_course", c.name, id);
     txn.commit();
 }
 
-// -------------------- Grades --------------------
+// Связь оценка и студента
 std::vector<Grade> Database::getGradesByStudent(int student_id) {
     pqxx::work txn(conn);
     auto r = txn.exec_prepared("get_grades_by_student", student_id);
     
-
     std::vector<Grade> grades;
     for (auto row : r) {
         std::string grade_str = row["grade"].is_null() ? "Н" : row["grade"].as<std::string>();
         bool present = (grade_str != "Н"); // если "Н" — отсутствовал
         grades.push_back(Grade{
             row["student_id"].as<int>(),
-            row["course_id"].as<int>(),   // подтягивается через join с lessons
+            row["course_id"].as<int>(),
             present ? std::stoi(grade_str) : 0,
             present,
             row["lesson_date"].as<std::string>()
@@ -474,6 +467,7 @@ std::vector<Grade> Database::getGradesByStudent(int student_id) {
     return grades;
 }
 
+// Получение рейтинга группы
 crow::json::wvalue Database::getGroupRating(int student_id) {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
@@ -490,6 +484,7 @@ crow::json::wvalue Database::getGroupRating(int student_id) {
     return res;
 }
 
+// Получение списка группы
 crow::json::wvalue Database::getGroupList(int student_id) {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
@@ -513,7 +508,7 @@ crow::json::wvalue Database::getGroupList(int student_id) {
     return students_list;
 }
 
-// -------------------- Teacher Methods --------------------
+// Связь преподавателя и предмета
 std::vector<TeacherCourse> Database::getTeacherCourses(int user_id) {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
@@ -529,6 +524,7 @@ std::vector<TeacherCourse> Database::getTeacherCourses(int user_id) {
     return res;
 }
 
+// Связь группы учителя с предметом
 std::vector<CourseGroup> Database::getTeacherGroupsForCourse(int course_id, int user_id) {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
@@ -543,6 +539,7 @@ std::vector<CourseGroup> Database::getTeacherGroupsForCourse(int course_id, int 
     return res;
 }
 
+// Получение урока для таблицы
 std::vector<Lesson> Database::getLessons(int course_id, int group_id) {
     pqxx::work txn(conn);
     auto r = txn.exec_prepared("get_lessons", course_id, group_id);
@@ -557,7 +554,6 @@ std::vector<Lesson> Database::getLessons(int course_id, int group_id) {
     txn.commit();
     return res;
 }
-
 
 // Получение таблицы оценок по курсу и группе
 std::vector<GradeCell> Database::getGradeTable(int course_id, int group_id) {
@@ -586,6 +582,7 @@ std::vector<GradeCell> Database::getGradeTable(int course_id, int group_id) {
     return table;
 }
 
+// Получение списка учителей
 std::vector<Teacher> Database::getAllTeachers() {
     pqxx::work txn(conn);
     auto r = txn.exec_prepared("get_all_teachers");
@@ -607,18 +604,17 @@ std::vector<Teacher> Database::getAllTeachers() {
     return teachers;
 }
 
-void Database::addTeacher(const std::string& login, const std::string& password, 
-                          const std::string& first_name, const std::string& last_name, 
-                          const std::vector<int>& group_ids) {
+// Добавление преподавателя
+void Database::addTeacher(const std::string& login, const std::string& password, const std::string& first_name, const std::string& last_name, const std::vector<int>& group_ids) {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
 
     try {
-        // 1. Создаем пользователя и получаем его ID
+        // Создаем пользователя и получаем его ID
         auto res_u = txn.exec_prepared("insert_user_teacher", login, password, "TEACHER", first_name, last_name);
         int new_user_id = res_u[0][0].as<int>();
 
-        // 2. Создаем профиль в таблице teachers
+        // Создаем профиль в таблице teachers
         txn.exec_prepared("insert_teacher_profile", new_user_id);
 
         txn.commit();
@@ -628,6 +624,7 @@ void Database::addTeacher(const std::string& login, const std::string& password,
     }
 }
 
+// Обновление информации о преподавателе
 void Database::updateTeacher(int id, const Teacher& t) {
     pqxx::work txn(conn);
 
@@ -639,6 +636,7 @@ void Database::updateTeacher(int id, const Teacher& t) {
     txn.commit();
 }
 
+// Удаление преподавателя
 void Database::deleteTeacher(int teacher_id) {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
@@ -652,12 +650,11 @@ void Database::deleteTeacher(int teacher_id) {
     }
 }
 
+// Связь преподавателя и пользователя 
 Teacher Database::getTeacherByUserId(int user_id) {
-    // 1. БЛОКИРОВКА (Обязательно!)
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
     
-    // 2. Выполняем исправленный запрос
     auto r = txn.exec_prepared("get_teacher_base_info", user_id);
     
     if (r.empty()) {
@@ -665,7 +662,6 @@ Teacher Database::getTeacherByUserId(int user_id) {
     }
 
     Teacher t;
-    // Теперь здесь лежит ID из таблицы teachers, а не users
     t.id = r[0]["id"].as<int>(); 
     t.user_id = user_id;
     t.first_name = r[0]["first_name"].as<std::string>();
@@ -676,14 +672,11 @@ Teacher Database::getTeacherByUserId(int user_id) {
     return t;
 }
 
-
-
-
 // Установка / обновление оценки
 void Database::setGrade(int student_id, int course_id, const std::string& lesson_date, const std::string& grade) {
     pqxx::work txn(conn);
 
-    // 1. Ищем ID урока по дате и предмету
+    // Ищем ID урока по дате и предмету
     auto r = txn.exec_prepared("get_lesson_by_id", course_id, lesson_date);
     
     if (r.empty()) {
@@ -692,14 +685,13 @@ void Database::setGrade(int student_id, int course_id, const std::string& lesson
     
     int lesson_id = r[0][0].as<int>();
 
-    // 2. Сохраняем или обновляем оценку (grade теперь строка)
+    // Сохраняем или обновляем оценку (grade теперь строка)
     txn.exec_prepared("upsert_grade", student_id, lesson_id, grade);
     
     txn.commit();
 }
 
-
-
+// Связь оценки между студентом и предетом
 std::vector<GradeEntry>Database::getGradesByStudentAndCourse(int student_id, int course_id) {
     pqxx::work w(conn);
     auto r = w.exec_prepared("get_grades_by_student_course", student_id, course_id);
@@ -713,15 +705,10 @@ std::vector<GradeEntry>Database::getGradesByStudentAndCourse(int student_id, int
     return res;
 }
 
-void Database::setGradeByDate(
-    int student_id,
-    int course_id,
-    const std::string& date,
-    const std::string& grade // Изменено с int на string
-) {
+// Связь оценки и даты занятия
+void Database::setGradeByDate(int student_id, int course_id, const std::string& date, const std::string& grade) {
     pqxx::work w(conn);
 
-    // 1. Используем подготовленный запрос для поиска ID урока
     auto lesson_res = w.exec_prepared("get_lesson_by_course_date", course_id, date);
 
     if (lesson_res.empty()) {
@@ -730,33 +717,21 @@ void Database::setGradeByDate(
 
     int lesson_id = lesson_res[0][0].as<int>();
 
-    // 2. Используем подготовленный запрос для вставки/обновления оценки
     w.exec_prepared("upsert_grade", student_id, lesson_id, grade);
 
     w.commit();
 }
 
-void Database::addGroup(const std::string& name) {
-    pqxx::work txn(conn);
-    txn.exec_prepared("insert_group", name);
-    txn.commit();
-}
-
-void Database::deleteGroup(int id) {
-    pqxx::work txn(conn);
-    txn.exec_prepared("delete_group", id);
-    txn.commit();
-}
-
+// Получение оценок студената
 crow::json::wvalue Database::getStudentGrades(int student_id) {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
-    auto r = txn.exec_prepared("get_student_grades", student_id); // Новый SQL
+    auto r = txn.exec_prepared("get_student_grades", student_id);
     
     std::vector<crow::json::wvalue> grades;
     for (auto row : r) {
         crow::json::wvalue g;
-        g["course_id"] = row["course_id"].as<int>(); // <--- ВАЖНО!
+        g["course_id"] = row["course_id"].as<int>();
         g["course_name"] = row["course_name"].as<std::string>();
         g["grade"] = row["grade"].as<std::string>();
         g["date_assigned"] = row["date_assigned"].as<std::string>(); 
@@ -766,14 +741,27 @@ crow::json::wvalue Database::getStudentGrades(int student_id) {
 }
 
 
+// Создание группы
+void Database::addGroup(const std::string& name) {
+    pqxx::work txn(conn);
+    txn.exec_prepared("insert_group", name);
+    txn.commit();
+}
+
+// Удаление группы
+void Database::deleteGroup(int id) {
+    pqxx::work txn(conn);
+    txn.exec_prepared("delete_group", id);
+    txn.commit();
+}
+
+// Получение профиля студента
 crow::json::wvalue Database::getStudentProfile(int student_id) {
     try {
-        // 1. ОБЯЗАТЕЛЬНО БЛОКИРУЕМ
         std::lock_guard<std::mutex> lock(db_mutex);
         pqxx::work txn(conn);
 
-        // 2. Выполняем запрос (убедитесь, что в queries.sql он есть!)
-        // Имя запроса должно быть "get_student_profile"
+        // Выполняем запрос (убедитесь, что в queries.sql он есть!)
         auto r = txn.exec_prepared("get_student_profile", student_id);
 
         if (r.empty()) {
@@ -782,7 +770,7 @@ crow::json::wvalue Database::getStudentProfile(int student_id) {
 
         crow::json::wvalue res;
         
-        // 3. Безопасное чтение полей (с проверкой на NULL)
+        // Безопасное чтение полей (с проверкой на NULL)
         res["id"] = r[0]["id"].as<int>();
         
         // first_name / last_name обычно NOT NULL, но лучше перестраховаться
@@ -798,13 +786,11 @@ crow::json::wvalue Database::getStudentProfile(int student_id) {
         // Имя группы (из JOIN) будет NULL, если student.group_id ссылается на несуществующую группу или NULL
         res["group_name"] = r[0]["group_name"].is_null() ? "Нет группы" : r[0]["group_name"].as<std::string>();
 
-        // Не забываем коммит, хотя для SELECT он не обязателен, но txn должен корректно закрыться
         txn.commit();
         
         return res;
 
     } catch (const std::exception& e) {
-        // Логируем ошибку в консоль сервера, чтобы вы её увидели
         std::cerr << "CRITICAL ERROR in getStudentProfile: " << e.what() << std::endl;
         
         crow::json::wvalue err;
@@ -813,10 +799,10 @@ crow::json::wvalue Database::getStudentProfile(int student_id) {
     }
 }
 
-
+// Получение юзера студента 
 int Database::getStudentIdByUserId(int user_id) {
     try {
-        std::lock_guard<std::mutex> lock(db_mutex); // ОБЯЗАТЕЛЬНО ДОБАВЬТЕ БЛОКИРОВКУ
+        std::lock_guard<std::mutex> lock(db_mutex);
         pqxx::work txn(conn);
         
         auto r = txn.exec_prepared("get_sid_by_uid", user_id);
@@ -832,7 +818,7 @@ int Database::getStudentIdByUserId(int user_id) {
     }
 }
 
-
+// Получение списка учеников для журнала
 crow::json::wvalue Database::getGroupMembers(int student_id) {
     try {
         std::lock_guard<std::mutex> lock(db_mutex);
@@ -844,7 +830,6 @@ crow::json::wvalue Database::getGroupMembers(int student_id) {
         std::vector<crow::json::wvalue> members;
         for (auto row : r) {
             crow::json::wvalue member;
-            // ID мы договорились не выводить, так что убираем его, если он не нужен для логики
             member["first_name"] = row["first_name"].as<std::string>();
             member["last_name"] = row["last_name"].as<std::string>();
             
@@ -861,7 +846,7 @@ crow::json::wvalue Database::getGroupMembers(int student_id) {
     }
 }
 
-
+// Получение списка студентов в группе для журнала
 std::vector<crow::json::wvalue> Database::getStudentsInGroup(int group_id) {
     pqxx::work txn(conn);
     auto r = txn.exec_prepared("get_students_by_group", group_id);
@@ -876,11 +861,12 @@ std::vector<crow::json::wvalue> Database::getStudentsInGroup(int group_id) {
     return students;
 }
 
+// Добавление учебной нагрузки преподавателю
 void Database::addTeacherLoad(pqxx::work& txn, int tid, int cid, int gid) {
     txn.exec_prepared("add_teacher_load", tid, cid, gid);
 }
 
-
+// Прогнозирование оценки
 crow::json::wvalue Database::predictGrade(int student_id, int course_id) {
     std::lock_guard<std::mutex> lock(db_mutex);
     pqxx::work txn(conn);
@@ -896,7 +882,7 @@ crow::json::wvalue Database::predictGrade(int student_id, int course_id) {
             try { grades.push_back(std::stoi(g_str)); } catch (...) {}
         }
     }
-    txn.commit(); // Закрываем транзакцию, дальше чистая математика
+    txn.commit();
 
     crow::json::wvalue res;
     
@@ -907,14 +893,12 @@ crow::json::wvalue Database::predictGrade(int student_id, int course_id) {
         return res;
     }
 
-    // 1. Обычное среднее
+    // Обычное среднее
     double simple_sum = 0;
     for (int g : grades) simple_sum += g;
     double avg = simple_sum / grades.size();
 
-    // 2. Взвешенное среднее (Линейный рост весов)
-    // Оценки: 3, 4, 5. Веса: 1, 2, 3.
-    // (3*1 + 4*2 + 5*3) / (1+2+3) = 26 / 6 = 4.33
+    // Взвешенное среднее (Линейный рост весов)
     double weighted_sum = 0;
     double weight_total = 0;
     
@@ -926,8 +910,8 @@ crow::json::wvalue Database::predictGrade(int student_id, int course_id) {
     
     double predicted = (weight_total > 0) ? (weighted_sum / weight_total) : 0;
 
-    // 3. Тренд
-    std::string trend = "stable";
+    // Тренд
+    std::string trend = "stable"; // Стогнироваие
     if (predicted > avg + 0.15) trend = "up";      // Прогноз заметно выше среднего
     else if (predicted < avg - 0.15) trend = "down"; // Прогноз заметно ниже
 
