@@ -3,7 +3,7 @@
 
 set -e  # Выход при ошибке
 
-echo "🚀 Запускаем docker compose up --build..."
+echo " Запускаем docker compose up --build..."
 
 # Проверяем, запущен ли Docker
 if ! docker info > /dev/null 2>&1; then
