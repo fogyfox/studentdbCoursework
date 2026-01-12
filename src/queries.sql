@@ -229,3 +229,7 @@ SELECT u.first_name, u.last_name, AVG(CAST(g.grade AS INTEGER)) as avg_score FRO
 -- name: get_grades_by_student_course
 SELECT l.lesson_date, g.grade FROM grades g JOIN lessons l ON l.id = g.lesson_id WHERE g.student_id = $1 AND l.course_id = $2
 
+-- name: update_password_by_student_id
+UPDATE users SET password_hash = $1 
+FROM students s 
+WHERE users.id = s.user_id AND s.id = $2

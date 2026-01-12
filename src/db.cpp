@@ -16,6 +16,100 @@ std::string trim(const std::string& str) {
 }
 
 Database::Database(const std::string &conn_str) : conn(conn_str) {
+    // --------------------------------------------------------
+    // АВТОМАТИЧЕСКАЯ ИНИЦИАЛИЗАЦИЯ СХЕМЫ (DDL)
+    // --------------------------------------------------------
+    try {
+        pqxx::work txn(conn);
+
+        // 1. Таблица Users
+        txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                login VARCHAR(50) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                role VARCHAR(20) NOT NULL,
+                first_name VARCHAR(100),
+                last_name VARCHAR(100)
+            );
+        )");
+
+        // 2. Таблица Groups
+        txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS groups (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(50) UNIQUE NOT NULL
+            );
+        )");
+
+        // 3. Таблица Students
+        txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS students (
+                id SERIAL PRIMARY KEY,
+                user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                group_id INT REFERENCES groups(id) ON DELETE SET NULL,
+                dob DATE
+            );
+        )");
+
+        // 4. Таблица Teachers
+        txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS teachers (
+                id SERIAL PRIMARY KEY,
+                user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE
+            );
+        )");
+
+        // 5. Таблица Courses
+        txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS courses (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL
+            );
+        )");
+
+        // 6. Таблица Teacher_Courses (Нагрузка)
+        txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS teacher_courses (
+                id SERIAL PRIMARY KEY,
+                teacher_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                course_id INT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+                group_id INT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+                CONSTRAINT unique_load UNIQUE (teacher_id, course_id, group_id)
+            );
+        )");
+
+        // 7. Таблица Lessons
+        txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS lessons (
+                id SERIAL PRIMARY KEY,
+                course_id INT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+                group_id INT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+                lesson_date DATE NOT NULL,
+                homework TEXT
+            );
+        )");
+
+        // 8. Таблица Grades
+        txn.exec(R"(
+            CREATE TABLE IF NOT EXISTS grades (
+                student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                lesson_id INT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+                grade VARCHAR(5),
+                PRIMARY KEY (student_id, lesson_id)
+            );
+        )");
+
+        txn.commit();
+        std::cout << "[INFO] Database schema initialized." << std::endl;
+
+    }
+    catch (const std::exception& e) {
+        std::cerr << "[CRITICAL] Failed to init DB schema: " << e.what() << std::endl;
+        // Не бросаем throw, чтобы сервер попытался запуститься дальше (вдруг таблицы есть)
+    }
+
+
     // 1. Открываем файл с запросами
     // Убедитесь, что файл queries.sql лежит рядом с исполняемым файлом
     std::ifstream file("queries.sql");
@@ -164,6 +258,21 @@ void Database::addStudent(const Student &s, std::string login, std::string passw
     txn.exec_prepared("insert_student", new_user_id, s.dob, s.group_id);
     
     txn.commit(); // КОММИТ ОБЯЗАТЕЛЕН
+}
+
+void Database::updatePasswordByStudentId(int student_id, const std::string& new_hash) {
+    std::lock_guard<std::mutex> lock(db_mutex);
+    pqxx::work txn(conn);
+
+    // Выполняем запрос, который мы добавили в queries.sql
+    auto result = txn.exec_prepared("update_password_by_student_id", new_hash, student_id);
+
+    txn.commit();
+
+    // (Опционально) Проверка, нашелся ли такой студент
+    if (result.affected_rows() == 0) {
+        throw std::runtime_error("Student not found or password not updated");
+    }
 }
 
 

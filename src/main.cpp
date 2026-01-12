@@ -499,22 +499,6 @@ int main() {
         }
     });
 
-    // CROW_ROUTE(app, "/teacher/<int>/courses").methods("GET"_method)
-    // ([&db](const crow::request& req, int teacher_id){
-    //     if (req.get_header_value("role") != "TEACHER")
-    //         return crow::response(403, "Access denied");
-
-    //     auto courses = db.getTeacherCourses(teacher_id);
-    //     crow::json::wvalue res;
-    //     for (size_t i = 0; i < courses.size(); ++i) {
-    //         res[i]["id"] = courses[i].course_id;
-    //         res[i]["name"] = courses[i].course_name;
-    //     }
-    //     return crow::response(res);
-    // });
-
-
-
     // GET /teacher/courses/<course_id>/groups
     CROW_ROUTE(app, "/teacher/courses/<int>/groups").methods("GET"_method)
     ([&db](const crow::request& req, int course_id){
@@ -590,10 +574,6 @@ int main() {
             int lesson_id = x["lesson_id"].i();
             std::string grade = x["grade"].s(); // Может быть "5" или "Н"
 
-            // Проверка на пустую оценку (если учитель стер оценку) - опционально
-            // Если grade пустая строка, можно сделать DELETE запрос. 
-            // Но пока предположим, что мы просто обновляем.
-
             pqxx::work txn(db.getConn());
             txn.exec_prepared("upsert_grade", student_id, lesson_id, grade);
             txn.commit();
@@ -610,31 +590,30 @@ int main() {
 
     
     // POST /admin/teachers
-    CROW_ROUTE(app, "/admin/teachers").methods("POST"_method)([&db](const crow::request& req){
+    // POST /admin/teachers
+    CROW_ROUTE(app, "/admin/teachers").methods("POST"_method)([&db](const crow::request& req) {
         auto x = crow::json::load(req.body);
         if (!x) return crow::response(400, "Invalid JSON");
 
         try {
-            std::vector<int> group_ids;
-            if (x.has("group_ids") && x["group_ids"].t() == crow::json::type::List) {
-                for (auto& id : x["group_ids"]) {
-                    group_ids.push_back(id.i());
-                }
-            }
+            std::string raw_pass = x["password"].s();
+
+            //Хешируем пароль перед передачей в БД!
+            std::string hashed_pass = hashPassword(raw_pass);
 
             db.addTeacher(
                 x["login"].s(),
-                x["password"].s(), // Пароль теперь передается!
+                hashed_pass, // Передаем уже хеш
                 x["first_name"].s(),
                 x["last_name"].s(),
-                group_ids
+                {} // Группы пустые
             );
-
             return crow::response(200, "{\"status\":\"success\"}");
-        } catch (const std::exception& e) {
+        }
+        catch (const std::exception& e) {
             return crow::response(500, std::string("Error: ") + e.what());
         }
-    });
+        });
     
     // PUT /admin/teachers/<id>
     CROW_ROUTE(app, "/admin/teachers/<int>").methods("PUT"_method)([&db](const crow::request& req, int id){
@@ -714,9 +693,26 @@ int main() {
         return crow::response(200, "{\"status\":\"success\"}");
     });
 
-    CROW_ROUTE(app, "/students/<int>/password").methods("PUT"_method)([&db](const crow::request& req, int student_id){
+    // PUT /students/<id>/password
+    CROW_ROUTE(app, "/students/<int>/password").methods("PUT"_method)
+        ([&db](const crow::request& req, int student_id) {
         auto x = crow::json::load(req.body);
-        return crow::response(200, "{\"status\":\"ok\"}");
+        if (!x || !x.has("new_password"))
+            return crow::response(400, "Missing new_password");
+
+        try {
+            // 1. Хешируем новый пароль
+            std::string raw_pass = x["new_password"].s();
+            std::string hashed_pass = hashPassword(raw_pass);
+
+            // 2. Пишем в базу
+            db.updatePasswordByStudentId(student_id, hashed_pass);
+
+            return crow::response(200, "{\"status\":\"ok\"}");
+        }
+        catch (const std::exception& e) {
+            return crow::response(500, e.what());
+        }
     });
 
     CROW_ROUTE(app, "/students/<int>/profile").methods("GET"_method)([&db](int student_id){
@@ -974,6 +970,38 @@ int main() {
         res.set_header("Content-Type", "text/css");
         return res;
     });
+
+    // ------------------------------------------------------------
+    // АВТОМАТИЧЕСКОЕ СОЗДАНИЕ ДЕФОЛТНОГО АДМИНА
+    // ------------------------------------------------------------
+    try {
+        // 1. Пробуем найти пользователя "admin"
+        db.getUserByLogin("admin");
+        std::cout << "[INFO] Default admin already exists." << std::endl;
+    }
+    catch (...) {
+        // 2. Если не нашли (вылетела ошибка), создаем его
+        std::cout << "[INFO] Creating default admin user..." << std::endl;
+
+        User admin;
+        admin.login = "admin";
+        admin.password_hash = hashPassword("admin"); // Хешируем пароль "admin"
+        admin.role = "ADMIN";
+        admin.first_name = "Super";
+        admin.last_name = "Admin";
+
+        try {
+            db.addUser(admin);
+            std::cout << "[SUCCESS] Admin created. Login: admin, Pass: admin" << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cerr << "[ERROR] Failed to create admin: " << e.what() << std::endl;
+        }
+    }
+    // ------------------------------------------------------------
+
+
+
 
     app.port(18080).multithreaded().run();   
 }

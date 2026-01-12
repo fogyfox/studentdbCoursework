@@ -115,6 +115,7 @@ public:
     void deleteStudent(int id);
     void updateStudent(int id, const Student &s);
     Student getStudentByUserId(int user_id);
+    void updatePasswordByStudentId(int student_id, const std::string& new_hash);
 
     // Courses
     void addCourse(const Course &c);
